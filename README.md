@@ -137,6 +137,7 @@ This keeps Forgejo replaceable without making replacement a current objective.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — target architecture and boundaries
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decisions and rationale
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged implementation plan
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Phase 1 deployment baseline and VPS preflight
 - [`docs/MIGRATION.md`](docs/MIGRATION.md) — GitHub-to-Forgejo transition strategy
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — operational model, backup and recovery baseline
 - [`docs/SECURITY.md`](docs/SECURITY.md) — minimum security posture
@@ -145,6 +146,6 @@ This keeps Forgejo replaceable without making replacement a current objective.
 
 **Phase 0 — Foundation and design.**
 
-No custom forge engine is being built yet. The immediate objective is to define, deploy, validate, and operate a private Forgejo-based forge on our VPS.
+No custom forge engine is being built yet. The immediate objective is to inspect the target VPS, resolve host-specific deployment choices, deploy and validate a private Forgejo-based forge, and prove the complete lifecycle before any broad migration.
 
 See [`docs/PROJECT-STATE.md`](docs/PROJECT-STATE.md) for the live checkpoint.
