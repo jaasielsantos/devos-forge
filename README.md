@@ -137,7 +137,8 @@ This keeps Forgejo replaceable without making replacement a current objective.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — target architecture and boundaries
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decisions and rationale
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged implementation plan
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Phase 1 deployment baseline and VPS preflight
+- [`docs/PREFLIGHT.md`](docs/PREFLIGHT.md) — read-only VPS discovery checklist
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Phase 1 deployment baseline and host-specific runbook target
 - [`docs/MIGRATION.md`](docs/MIGRATION.md) — GitHub-to-Forgejo transition strategy
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — operational model, backup and recovery baseline
 - [`docs/SECURITY.md`](docs/SECURITY.md) — minimum security posture
