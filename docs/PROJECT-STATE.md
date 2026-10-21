@@ -65,12 +65,13 @@ The repository now contains:
 - `docs/ARCHITECTURE.md`;
 - `docs/DECISIONS.md`;
 - `docs/ROADMAP.md`;
+- `docs/PREFLIGHT.md`;
 - `docs/DEPLOYMENT.md`;
 - `docs/MIGRATION.md`;
 - `docs/OPERATIONS.md`;
 - `docs/SECURITY.md`.
 
-These documents establish the project boundary, phased strategy, security posture, recovery requirement, migration model, and future agent-native direction.
+These documents establish the project boundary, phased strategy, security posture, recovery requirement, migration model, VPS discovery procedure, and future agent-native direction.
 
 ## Open decisions
 
@@ -97,6 +98,8 @@ Phase 0 is complete when we have:
 - [x] security baseline documented;
 - [x] backup and restore strategy baseline documented;
 - [x] migration plan documented;
+- [x] read-only VPS preflight procedure documented;
+- [ ] VPS preflight evidence collected and analyzed;
 - [ ] host-specific deployment runbook ready to execute;
 - [ ] one pilot repository selected.
 
@@ -136,20 +139,22 @@ release or deploy
 
 ## Immediate next action
 
-**VPS preflight.**
+**Execute the read-only VPS preflight in `docs/PREFLIGHT.md` and analyze its output.**
 
-Inspect the real host before writing production manifests:
+The preflight maps:
 
 1. OS and runtime versions;
 2. existing Docker/Compose state;
 3. current reverse proxy and ingress;
 4. ports and firewall;
-5. DNS;
+5. network interfaces;
 6. CPU/RAM/disk capacity;
-7. current volumes/networks;
-8. backup/monitoring mechanisms already present.
+7. current volumes/networks/containers;
+8. PostgreSQL presence or conflicts;
+9. SSH exposure;
+10. backup/monitoring mechanisms already present.
 
-Then resolve the open deployment choices and generate the host-specific Compose/ingress/backup/restore runbook.
+After evidence is collected, resolve the open deployment choices and generate the host-specific Compose/ingress/backup/restore runbook.
 
 ## Checkpoint rule
 
