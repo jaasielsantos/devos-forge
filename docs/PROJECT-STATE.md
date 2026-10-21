@@ -56,6 +56,22 @@ human intent
 
 See `docs/DECISIONS.md` for durable decision records.
 
+## Foundation pack completed
+
+The repository now contains:
+
+- `00_PROMPT_ZERO.md`;
+- `README.md`;
+- `docs/ARCHITECTURE.md`;
+- `docs/DECISIONS.md`;
+- `docs/ROADMAP.md`;
+- `docs/DEPLOYMENT.md`;
+- `docs/MIGRATION.md`;
+- `docs/OPERATIONS.md`;
+- `docs/SECURITY.md`.
+
+These documents establish the project boundary, phased strategy, security posture, recovery requirement, migration model, and future agent-native direction.
+
 ## Open decisions
 
 These must be resolved before production deployment:
@@ -76,12 +92,12 @@ These must be resolved before production deployment:
 
 Phase 0 is complete when we have:
 
-- [ ] production architecture agreed;
-- [ ] deployment topology documented;
-- [ ] security baseline documented;
-- [ ] backup and restore strategy documented;
-- [ ] migration plan documented;
-- [ ] first deployment plan ready to execute;
+- [ ] production architecture agreed after VPS preflight;
+- [x] deployment topology baseline documented;
+- [x] security baseline documented;
+- [x] backup and restore strategy baseline documented;
+- [x] migration plan documented;
+- [ ] host-specific deployment runbook ready to execute;
 - [ ] one pilot repository selected.
 
 ## Phase 1 target
@@ -120,15 +136,20 @@ release or deploy
 
 ## Immediate next action
 
-Produce the deployable infrastructure baseline for Phase 1:
+**VPS preflight.**
 
-1. define the final VPS topology;
-2. choose ingress/reverse proxy integration;
-3. define persistent volumes and backup paths;
-4. define Forgejo + PostgreSQL + Runner deployment;
-5. validate disaster-recovery assumptions;
-6. deploy a pilot instance;
-7. migrate one real repository and run the complete lifecycle.
+Inspect the real host before writing production manifests:
+
+1. OS and runtime versions;
+2. existing Docker/Compose state;
+3. current reverse proxy and ingress;
+4. ports and firewall;
+5. DNS;
+6. CPU/RAM/disk capacity;
+7. current volumes/networks;
+8. backup/monitoring mechanisms already present.
+
+Then resolve the open deployment choices and generate the host-specific Compose/ingress/backup/restore runbook.
 
 ## Checkpoint rule
 
