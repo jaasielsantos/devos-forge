@@ -3,13 +3,13 @@
 ## Status
 
 **Phase:** 1 — Git SSH validation  
-**Implementation:** Stage A and Stage B complete; Stage C preflight clean; client key enrollment next  
+**Implementation:** Stage A and Stage B complete; Stage C authentication proven; clone/push smoke next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Enroll one explicitly intended client public SSH key into the `jaasielsantos` Forgejo account, validate authentication through the existing system OpenSSH service on port 22, then prove clone/push before moving to Forgejo Runner + rootless Podman.
+Complete Stage C by proving a real Git clone/push over SSH through the existing system OpenSSH service on port 22. After that, move to Forgejo Runner + rootless Podman, migrate the `devos-forge` pilot, and prove backup/restore.
 
 ## Locked V1 topology
 
@@ -65,6 +65,14 @@ Validated:
 
 The first apply exposed a missing `oauth2.JWT_SECRET`. The durable bootstrap now pre-generates it while preserving `/etc/forgejo/app.ini` as `root:git 0640`.
 
+A later SSH test exposed that the configured repository root did not yet exist. The bootstrap now explicitly creates:
+
+```text
+/var/lib/forgejo/data/forgejo-repositories
+```
+
+with `git:git` ownership before first startup.
+
 ## Stage B — completed
 
 Validated:
@@ -82,14 +90,6 @@ Existing unrelated `doxa-upload` Nginx warnings remain non-blocking and unchange
 
 Forgejo uses system OpenSSH rather than its built-in SSH server.
 
-Official Forgejo behavior for this model:
-
-- `START_SSH_SERVER = false`;
-- `SSH_PORT = 22` controls the clone URL;
-- when the internal SSH server is disabled, Forgejo manages the dedicated `git` user's `authorized_keys` file by default;
-- the file is expected to contain only Forgejo-managed keys/commands;
-- `forgejo admin regenerate keys` can rebuild it from keys stored in Forgejo.
-
 ### C1 — preflight COMPLETE
 
 Validated on the target host:
@@ -98,35 +98,25 @@ Validated on the target host:
 - `forgejo.service` active/enabled;
 - OpenSSH active and listening on IPv4/IPv6 port 22;
 - `PubkeyAuthentication yes`;
-- `AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys2`;
+- expected `AuthorizedKeysFile`;
 - `StrictModes yes`;
 - `PermitRootLogin no`;
 - dedicated `git` account exists with home `/var/lib/forgejo`;
 - `/var/lib/forgejo/.ssh` ownership and modes are correct;
-- `/var/lib/forgejo/.ssh/authorized_keys` exists as `git:git 0600`;
 - Forgejo SSH configuration points to `git.criandofacil.com.br:22` with built-in SSH disabled;
-- DNS resolves to the selected VPS;
-- authorized key count is currently zero, which is expected before first client enrollment.
+- DNS resolves to the selected VPS.
 
-### C2 — next gate: enroll intended client key
+### C2 — client key + authentication COMPLETE
 
-Add one explicitly intended **public** SSH key to the `jaasielsantos` Forgejo account. Never copy/import arbitrary VPS keys and never expose a private key.
+A dedicated Ed25519 key named `devos-forge` was enrolled in the `jaasielsantos` Forgejo account.
 
-After enrollment, Forgejo should manage the corresponding entry in `/var/lib/forgejo/.ssh/authorized_keys`. Regenerate only if needed:
+The host fingerprint was verified before trust was accepted by the client.
 
-```bash
-sudo -u git /usr/local/bin/forgejo admin regenerate keys \
-  --config /etc/forgejo/app.ini \
-  --work-path /var/lib/forgejo
-```
+`ssh -T git@git.criandofacil.com.br` now returns successful Forgejo authentication for `jaasielsantos` and correctly refuses shell access. The earlier `Unable to access repository path` message disappeared after creating the configured repository root.
 
-Then test from the intended client:
+### C3 — next gate: real Git operation
 
-```bash
-ssh -T git@git.criandofacil.com.br
-```
-
-Stage C completes only after a real SSH clone and push succeed.
+Stage C completes only after a real SSH clone and push succeed against a Forgejo repository.
 
 ## Executable artifacts
 
@@ -143,14 +133,14 @@ Stage C completes only after a real SSH clone and push succeed.
 
 The GitHub repository is public. Never commit runtime passwords, tokens, private keys, database credentials, generated Forgejo secrets, certificate private keys, or private SSH keys.
 
-Client SSH access must be granted only by adding an explicitly intended **public** key to the Forgejo account. Do not reuse or copy arbitrary host keys merely because they already exist on the VPS.
+Client SSH access is granted only through explicitly intended public keys stored in Forgejo.
 
 ## Phase 1 sequence
 
 ```text
 [x] Stage A  local Forgejo bootstrap + health
 [x] Stage B  Nginx + DNS + TLS
-[~] Stage C  SSH preflight clean; key enrollment/auth/clone-push pending
+[~] Stage C  SSH auth proven; clone/push smoke pending
 [ ] Stage D  Forgejo Runner + Podman
 [ ] Stage E  migrate devos-forge pilot
 [ ] Stage F  backup + restore rehearsal
@@ -159,10 +149,10 @@ Client SSH access must be granted only by adding an explicitly intended **public
 
 ## Immediate next action
 
-On the intended client computer, identify or create one Ed25519 SSH keypair. Add only the `.pub` key to the `jaasielsantos` Forgejo account, then validate:
+Create a small Forgejo smoke repository and prove:
 
-```bash
-ssh -T git@git.criandofacil.com.br
+```text
+SSH clone -> local commit -> SSH push
 ```
 
-Do not proceed to Forgejo Runner until SSH authentication and a real clone/push operation are confirmed.
+Do not proceed to Forgejo Runner until a real clone/push operation is confirmed.
