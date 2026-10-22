@@ -232,8 +232,6 @@ Forgejo's native web interface remains available as an administrative and diagno
 
 The installation is private, initially operated by a single primary user, and most routine actions can be performed more efficiently through Git, SSH, APIs, automation, and assistant-driven commands.
 
-A custom UI would add implementation and maintenance cost without improving the current workflow.
-
 ### Consequences
 
 - prioritize API completeness and automation over visual customization;
@@ -304,3 +302,106 @@ The host has limited CPU capacity, while normal workflows may benefit from two j
 - start with controlled workloads and observe load;
 - heavy jobs may be serialized if contention is excessive;
 - a second VPS may later provide extra runner capacity without moving Forgejo itself.
+
+---
+
+## D-014 — Forgejo V1 uses native binary + systemd
+
+**Status:** Accepted  
+**Date:** 2026-10-22
+
+### Decision
+
+Run the Forgejo server as a native binary managed by systemd rather than as a container.
+
+### Why
+
+The selected host already uses native Nginx, PostgreSQL and systemd services. Native Forgejo minimizes change surface and avoids introducing Docker solely for the server application.
+
+Podman remains reserved for runner job isolation.
+
+---
+
+## D-015 — Reuse existing Nginx and PostgreSQL 16
+
+**Status:** Accepted  
+**Date:** 2026-10-22
+
+### Decision
+
+Reuse the host's existing Nginx and PostgreSQL 16 services.
+
+Forgejo receives a dedicated `forgejo` PostgreSQL role/database and listens for HTTP only on `127.0.0.1:3000` behind Nginx.
+
+### Consequences
+
+- no public PostgreSQL listener;
+- no duplicate reverse proxy;
+- no second database server;
+- Forgejo's local HTTP port remains inaccessible from the public network.
+
+---
+
+## D-016 — Git SSH uses the existing OpenSSH server on port 22
+
+**Status:** Accepted  
+**Date:** 2026-10-22
+
+### Decision
+
+Do not start Forgejo's built-in SSH server in V1.
+
+Use the existing host OpenSSH service on port 22 and a dedicated Forgejo `git` operating-system account whose authorized keys are managed by Forgejo.
+
+### Why
+
+This preserves standard Git SSH clone URLs without opening another public port or changing the host administration SSH port.
+
+---
+
+## D-017 — Runner jobs use rootless Podman
+
+**Status:** Accepted  
+**Date:** 2026-10-22
+
+### Decision
+
+Run Forgejo Actions jobs through a dedicated Forgejo Runner account backed by rootless Podman containers.
+
+Generic workflows must not execute directly on the host.
+
+### Concurrency transition
+
+While the existing GitHub Actions runner remains active, keep Forgejo `runner.capacity = 1`.
+
+After the GitHub runner is retired and host load is validated, raise the target to `runner.capacity = 2`.
+
+---
+
+## D-018 — `devos-forge` is the pilot repository
+
+**Status:** Accepted  
+**Date:** 2026-10-22
+
+### Decision
+
+Use this repository as the first end-to-end migration pilot.
+
+### Why
+
+The forge should prove that it can host and operate its own infrastructure repository before production applications become dependent on it.
+
+The pilot must pass clone, branch, push, PR, Actions, merge, backup and restore checks before broader migration.
+
+---
+
+## D-019 — Candidate V1 hostname is `git.criandofacil.com.br`
+
+**Status:** Accepted for V1 unless DNS ownership/operations expose a blocker  
+**Date:** 2026-10-22
+
+### Decision
+
+Use `git.criandofacil.com.br` as the default V1 public hostname.
+
+Nginx and TLS configuration happen only after the local Forgejo bootstrap passes and DNS is pointed correctly.
