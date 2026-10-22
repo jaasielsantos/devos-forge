@@ -4,7 +4,8 @@
 
 **Phase:** 0 — Foundation and design  
 **Implementation:** not deployed yet  
-**Primary objective:** establish a private Forgejo-based forge on our VPS and validate the complete Git + CI + runner lifecycle without GitHub dependency.
+**Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
+**Primary objective:** convert the selected host baseline into an executable Forgejo + runner deployment and validate the complete Git + CI lifecycle without GitHub dependency.
 
 ## Current thesis
 
@@ -30,7 +31,7 @@ Chat / CLI / Git / SSH / API
 Git repositories        Forgejo Actions
                             |
                             v
-                       Our Runner(s)
+                    Self-hosted runner(s)
 ```
 
 The initial operating model is headless-first. No custom DevOS Forge UI will be built in V1. Forgejo's native web interface remains available only as an administrative, diagnostic, and manual-review fallback.
@@ -52,8 +53,12 @@ human intent
 
 - Use Git as the source-control substrate.
 - Use Forgejo as the initial forge implementation.
-- Host the forge in our own VPS infrastructure.
+- Host the V1 forge on `criandofacil-vps` (`srv1805473`).
+- Keep V1 on one VPS rather than splitting control and execution across two hosts.
+- Reuse the host's existing Nginx/PostgreSQL infrastructure where appropriate.
 - Use self-hosted runners under our control.
+- Design the runner layer for up to two concurrent jobs, subject to resource validation.
+- Keep the second VPS out of the initial runtime; reserve it for future runner capacity, backup, or disaster recovery if needed.
 - Keep the initial scope private and sized for our own projects, not public internet scale.
 - Preserve a provider abstraction between DevOS and the forge implementation.
 - Avoid building a custom forge engine until real operational evidence justifies it.
@@ -62,6 +67,32 @@ human intent
 - Keep Forgejo's native UI available as fallback rather than as the primary interaction surface.
 
 See `docs/DECISIONS.md` for durable decision records.
+
+## VPS evidence collected
+
+Both available VPS hosts were inspected read-only.
+
+### Selected: `criandofacil-vps` / `srv1805473`
+
+Observed baseline:
+
+- Ubuntu 24.04 LTS family;
+- 1 vCPU;
+- ~3.8 GiB RAM with ~3.2 GiB available at capture time;
+- 2 GiB swap;
+- ~34 GiB free disk;
+- active Nginx on ports 80/443;
+- active PostgreSQL 16 on loopback;
+- Certbot timer present;
+- existing application services already using local ports;
+- evidence of an existing GitHub Actions runner account/home;
+- Docker/Compose not present during the initial inspection.
+
+### Deferred: second VPS / `srv1979180`
+
+The second VPS already has Docker/Compose and runner-oriented infrastructure, but using both hosts in V1 was intentionally rejected to minimize distributed-system complexity.
+
+It remains available as an expansion target if real usage justifies it.
 
 ## Foundation pack completed
 
@@ -73,24 +104,31 @@ The repository now contains:
 - `docs/DECISIONS.md`;
 - `docs/ROADMAP.md`;
 - `docs/PREFLIGHT.md`;
+- `docs/HOST-CRIANDOFACIL.md`;
 - `docs/DEPLOYMENT.md`;
 - `docs/MIGRATION.md`;
 - `docs/OPERATIONS.md`;
 - `docs/SECURITY.md`.
 
-These documents establish the project boundary, phased strategy, security posture, recovery requirement, migration model, VPS discovery procedure, and future agent-native direction.
+These documents establish the project boundary, phased strategy, security posture, recovery requirement, migration model, VPS discovery procedure, selected host baseline, and future agent-native direction.
 
 ## Open decisions
 
 These must be resolved before production deployment:
 
 - [ ] final hostname/domain for the forge;
-- [ ] reverse proxy implementation compatible with the existing VPS stack;
-- [ ] PostgreSQL deployment details;
+- [x] V1 host selected: `criandofacil-vps`;
+- [x] V1 topology selected: one VPS first;
+- [x] reverse proxy family selected: reuse existing Nginx unless directed inspection exposes a blocker;
+- [x] database family selected: reuse existing PostgreSQL 16 with a dedicated Forgejo DB/user unless directed inspection exposes a blocker;
+- [ ] Forgejo packaging: native binary/systemd vs container;
+- [ ] exact Forgejo localhost web port;
+- [ ] Git-over-SSH exposure strategy;
 - [ ] storage layout and capacity allocation;
 - [ ] offsite backup destination;
 - [ ] backup retention policy;
-- [ ] runner topology and isolation model;
+- [ ] runner runtime/isolation model;
+- [ ] exact initial runner concurrency after validation;
 - [ ] authentication policy and initial users;
 - [ ] mail/notification strategy, if required;
 - [ ] first pilot repository;
@@ -100,14 +138,16 @@ These must be resolved before production deployment:
 
 Phase 0 is complete when we have:
 
-- [ ] production architecture agreed after VPS preflight;
+- [x] initial production topology selected;
 - [x] deployment topology baseline documented;
 - [x] security baseline documented;
 - [x] backup and restore strategy baseline documented;
 - [x] migration plan documented;
 - [x] read-only VPS preflight procedure documented;
+- [x] both candidate VPS hosts inspected and compared;
+- [x] V1 host selected;
 - [x] initial interaction model decided: headless-first, no custom V1 UI;
-- [ ] VPS preflight evidence collected and analyzed;
+- [ ] directed `criandofacil-vps` inspection completed;
 - [ ] host-specific deployment runbook ready to execute;
 - [ ] one pilot repository selected.
 
@@ -143,16 +183,21 @@ release or deploy
 - recreating social features;
 - building a marketplace;
 - building or customizing a dedicated DevOS Forge web UI;
+- splitting V1 across multiple VPS hosts without demonstrated need;
 - replacing Forgejo internals prematurely;
 - designing agent-native features before the base forge is operational.
 
 ## Immediate next action
 
-**Complete the directed inspection of `criandofacil-vps` and convert the generic deployment baseline into a host-specific runbook.**
+Run the directed read-only inspection in `docs/HOST-CRIANDOFACIL.md` on:
 
-The selected initial topology is intentionally simple: one VPS first. The second VPS remains outside the initial runtime and can later be used for backup, disaster recovery, or extra runner capacity if real usage justifies it.
+```bash
+ssh criandofacil-vps
+```
 
-After evidence is collected, resolve the open deployment choices and generate the host-specific ingress/Forgejo/PostgreSQL/runner/backup/restore runbook.
+The directed inspection resolves only the remaining host-specific questions: Nginx integration, PostgreSQL integration, Forgejo packaging, Git SSH, existing runner topology, runner isolation, storage, and backup integration.
+
+After that evidence is reviewed, convert `docs/DEPLOYMENT.md` into the executable V1 runbook and begin installation.
 
 ## Checkpoint rule
 
