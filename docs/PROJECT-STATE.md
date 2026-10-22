@@ -2,14 +2,14 @@
 
 ## Status
 
-**Phase:** 1 — Git SSH validation  
-**Implementation:** Stage A and Stage B complete; Stage C authentication proven; clone/push smoke next  
+**Phase:** 1 — Forgejo Runner validation  
+**Implementation:** Stage A, Stage B, and Stage C complete; Stage D runner + Podman next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Complete Stage C by proving a real Git clone/push over SSH through the existing system OpenSSH service on port 22. After that, move to Forgejo Runner + rootless Podman, migrate the `devos-forge` pilot, and prove backup/restore.
+Install and register a dedicated Forgejo Runner using rootless Podman, keep runner capacity at 1 while the GitHub runner coexists, and prove a minimal Forgejo Actions smoke workflow before migrating the `devos-forge` pilot.
 
 ## Locked V1 topology
 
@@ -86,7 +86,7 @@ Validated:
 
 Existing unrelated `doxa-upload` Nginx warnings remain non-blocking and unchanged.
 
-## Stage C — Git SSH
+## Stage C — Git SSH COMPLETED
 
 Forgejo uses system OpenSSH rather than its built-in SSH server.
 
@@ -112,11 +112,29 @@ A dedicated Ed25519 key named `devos-forge` was enrolled in the `jaasielsantos` 
 
 The host fingerprint was verified before trust was accepted by the client.
 
-`ssh -T git@git.criandofacil.com.br` now returns successful Forgejo authentication for `jaasielsantos` and correctly refuses shell access. The earlier `Unable to access repository path` message disappeared after creating the configured repository root.
+`ssh -T git@git.criandofacil.com.br` returns successful Forgejo authentication for `jaasielsantos` and correctly refuses shell access. The earlier `Unable to access repository path` message disappeared after creating the configured repository root.
 
-### C3 — next gate: real Git operation
+### C3 — real Git operation COMPLETE
 
-Stage C completes only after a real SSH clone and push succeed against a Forgejo repository.
+A dedicated temporary smoke key was used from the VPS to validate a real repository operation without modifying the locked-down work PC.
+
+Validated against Forgejo repository `jaasielsantos/ssh-smoke`:
+
+```text
+SSH authentication -> SSH clone -> local commit -> SSH push
+```
+
+The push completed successfully on `main` with commit `bcbfee5` (`test: validate Forgejo SSH push`). This proves the Git-over-SSH read/write path end to end.
+
+## Stage D — next gate: Forgejo Runner + rootless Podman
+
+Next objectives:
+
+- install/register a dedicated Forgejo Runner;
+- use rootless Podman for job isolation;
+- keep runner capacity at 1 while the GitHub runner coexists;
+- run a minimal Forgejo Actions smoke workflow;
+- confirm no generic direct-host mutation path is introduced.
 
 ## Executable artifacts
 
@@ -133,15 +151,15 @@ Stage C completes only after a real SSH clone and push succeed against a Forgejo
 
 The GitHub repository is public. Never commit runtime passwords, tokens, private keys, database credentials, generated Forgejo secrets, certificate private keys, or private SSH keys.
 
-Client SSH access is granted only through explicitly intended public keys stored in Forgejo.
+Client SSH access is granted only through explicitly intended public keys stored in Forgejo. Temporary smoke credentials should be removed after their validation purpose is complete.
 
 ## Phase 1 sequence
 
 ```text
 [x] Stage A  local Forgejo bootstrap + health
 [x] Stage B  Nginx + DNS + TLS
-[~] Stage C  SSH auth proven; clone/push smoke pending
-[ ] Stage D  Forgejo Runner + Podman
+[x] Stage C  Git SSH auth + clone/push proven
+[~] Stage D  Forgejo Runner + Podman
 [ ] Stage E  migrate devos-forge pilot
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
@@ -149,10 +167,4 @@ Client SSH access is granted only through explicitly intended public keys stored
 
 ## Immediate next action
 
-Create a small Forgejo smoke repository and prove:
-
-```text
-SSH clone -> local commit -> SSH push
-```
-
-Do not proceed to Forgejo Runner until a real clone/push operation is confirmed.
+Prepare Stage D with a read-only runner/Podman preflight, then install and register the runner only after the current host state and official Forgejo Runner requirements are verified.
