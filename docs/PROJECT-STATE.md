@@ -3,13 +3,13 @@
 ## Status
 
 **Phase:** 1 — Bootstrap  
-**Implementation:** Stage A dry-run validated; apply pending  
+**Implementation:** Stage A partially applied; startup repair prepared  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Apply the validated Stage A bootstrap on `criandofacil-vps`, verify Forgejo locally on `127.0.0.1:3000`, then advance to DNS/Nginx/TLS, Git SSH, Forgejo Runner, pilot migration, and backup/restore validation.
+Repair the Stage A Forgejo startup by pre-populating `oauth2.JWT_SECRET`, verify Forgejo locally on `127.0.0.1:3000`, then advance to DNS/Nginx/TLS, Git SSH, Forgejo Runner, pilot migration, and backup/restore validation.
 
 ## Locked V1 topology
 
@@ -46,8 +46,8 @@ Confirmed on `criandofacil-vps`:
 - Nginx 1.24 active with valid configuration;
 - Certbot active;
 - PostgreSQL 16.15 active on loopback only;
-- no existing Forgejo database/role;
-- port 3000 free;
+- no pre-existing Forgejo database/role before bootstrap;
+- port 3000 free before bootstrap;
 - existing GitHub Actions runner active under `cf-gh-runner`;
 - Podman present;
 - UFW active with inbound 22/80/443;
@@ -75,33 +75,51 @@ Durable decisions are captured in `docs/DECISIONS.md` (D-014 through D-019) and 
 - `docs/RUNBOOK-V1.md`
 - `docs/ADR-001-V1-DEPLOYMENT.md`
 - `scripts/bootstrap-server-v1.sh`
+- `scripts/repair-stage-a-oauth2-secret.sh`
 - `docs/HOST-CRIANDOFACIL.md`
 - `docs/DEPLOYMENT.md`
 
-The bootstrap script is dry-run by default and Stage A does not alter Nginx, DNS, TLS, firewall, sshd, Forgejo Runner, or the existing GitHub runner.
+## Stage A evidence
 
-## Stage A validation
+### Dry-run
 
-Dry-run executed successfully on `criandofacil-vps`.
+Dry-run executed successfully on `criandofacil-vps` with no blocker.
 
-Observed plan:
+### First apply
 
-1. ensure download/verification tools;
-2. download and verify Forgejo 15.0.10;
-3. create dedicated OS user `git`;
-4. create dedicated PostgreSQL role/database;
-5. create restricted Forgejo configuration with generated secrets;
-6. install systemd service bound only to `127.0.0.1:3000`;
-7. create local admin user `jaasielsantos` with random initial password;
-8. start Forgejo and verify localhost health.
+The first apply successfully completed:
 
-Dry-run produced no blocker and confirmed that Nginx, DNS/TLS, firewall, sshd, the existing GitHub runner, and Forgejo Runner/Podman remain untouched in Stage A.
+- Forgejo 15.0.10 download and GPG verification;
+- dedicated OS user/directories;
+- PostgreSQL `forgejo` role/database creation;
+- Forgejo configuration and primary secret generation;
+- systemd unit installation and enablement.
+
+The service then entered a restart loop before binding `127.0.0.1:3000`.
+
+### Root cause
+
+The journal reported:
+
+```text
+save oauth2.JWT_SECRET failed: failed to save "/etc/forgejo/app.ini": permission denied
+```
+
+This is a bootstrap defect, not a host-capacity, network, PostgreSQL, or port conflict.
+
+`/etc/forgejo/app.ini` is intentionally protected as `root:git 0640`. Forgejo 15 requires `oauth2.JWT_SECRET` even when OAuth2 is not otherwise being configured; when absent, Forgejo attempts to generate and persist it. The service user `git` must not be given write access to the root-owned configuration merely to satisfy this bootstrap behavior.
+
+### Durable fix
+
+- `scripts/bootstrap-server-v1.sh` now pre-generates `JWT_SECRET` with `forgejo generate secret JWT_SECRET` and writes it into `[oauth2]` before startup;
+- config ownership remains `root:git 0640`;
+- `scripts/repair-stage-a-oauth2-secret.sh` repairs the already-created partial installation without regenerating the database password or weakening permissions.
 
 ## Security gate
 
 The current GitHub repository is public. Never commit runtime passwords, tokens, private keys, database credentials, or generated Forgejo secrets. Runtime secrets stay on the VPS with restricted permissions.
 
-## Phase 0 exit criteria
+## Phase 0 / Stage A exit criteria
 
 - [x] architecture/security/migration baseline documented;
 - [x] both VPS hosts inspected;
@@ -111,14 +129,19 @@ The current GitHub repository is public. Never commit runtime passwords, tokens,
 - [x] durable V1 host decisions documented;
 - [x] pilot repository selected;
 - [x] executable Stage A bootstrap prepared;
-- [x] README/deployment/checkpoint docs synchronized;
 - [x] Stage A dry-run reviewed;
-- [ ] Stage A applied and local health validated.
+- [~] Stage A applied — partial installation exists;
+- [x] Stage A startup failure diagnosed;
+- [x] bootstrap corrected in source;
+- [x] targeted repair script prepared;
+- [ ] repair applied and `forgejo.service` active;
+- [ ] local health endpoint validated;
+- [ ] initial admin creation completed.
 
 ## Phase 1 sequence
 
 ```text
-Stage A  local Forgejo bootstrap
+Stage A  local Forgejo bootstrap / repair
 Stage B  DNS + Nginx + TLS
 Stage C  Git SSH validation
 Stage D  Forgejo Runner + Podman
@@ -129,8 +152,10 @@ Stage G  Forgejo becomes source of truth
 
 ## Immediate next action
 
+Run only the targeted repair on `criandofacil-vps`:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/bootstrap-server-v1.sh | sudo bash -s -- --apply
+curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/repair-stage-a-oauth2-secret.sh | sudo bash
 ```
 
-After apply, capture the script output and verify `forgejo.service` plus the localhost health endpoint before moving to Stage B.
+Do not rerun the full Stage A bootstrap against the partial installation. After repair, verify `forgejo.service` and `http://127.0.0.1:3000/api/healthz` before proceeding.
