@@ -199,3 +199,45 @@ Moving from an external forge to a single unbacked VPS would exchange vendor dep
 ### Consequences
 
 Backup verification and restore drills are release criteria for the infrastructure, not post-launch housekeeping.
+
+---
+
+## D-011 — V1 is headless-first; no custom user interface
+
+**Status:** Accepted  
+**Date:** 2026-10-22
+
+### Decision
+
+Do not build a custom DevOS Forge web interface in the initial phases.
+
+The primary interaction model will be:
+
+```text
+Human
+  |
+  v
+Chat / CLI / DevOS commands
+  |
+  v
+ForgeProvider / Forgejo API / Git / SSH
+  |
+  v
+DevOS Forge
+```
+
+Forgejo's native web interface remains available as an administrative and diagnostic fallback, but it is not the primary product surface and will not be customized initially.
+
+### Why
+
+The installation is private, initially operated by a single primary user, and most routine actions can be performed more efficiently through Git, SSH, APIs, automation, and assistant-driven commands.
+
+A custom UI would add implementation and maintenance cost without improving the current workflow.
+
+### Consequences
+
+- prioritize API completeness and automation over visual customization;
+- keep operational actions scriptable and machine-readable;
+- document common commands and DevOS operations rather than designing dashboards;
+- use Forgejo's native UI only when manual inspection, administration, review, or emergency access is useful;
+- reconsider a custom interface only when real multi-user or visual workflow requirements appear.
