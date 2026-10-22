@@ -130,7 +130,7 @@ Do **not** paste `/root/devos-forge-initial-admin.txt` into chat.
 
 Stage B is split to keep certificate issuance separate from ingress configuration.
 
-### Stage B1 — Nginx HTTP reverse proxy
+### Stage B1 — Nginx HTTP reverse proxy — COMPLETE
 
 Repository script:
 
@@ -138,27 +138,28 @@ Repository script:
 scripts/stage-b-nginx.sh
 ```
 
-Preview:
+The script was previewed and applied successfully.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/stage-b-nginx.sh | sudo bash
+Validated result:
+
+- dedicated HTTP vhost installed for `git.criandofacil.com.br`;
+- reverse proxy target is `http://127.0.0.1:3000`;
+- `merge_slashes off` present;
+- Host / forwarded / upgrade headers present;
+- `client_max_body_size 512M` present;
+- `nginx -t` passed before reload;
+- Nginx reloaded successfully;
+- local Host-header smoke test reached the Forgejo route and returned `301 Moved Permanently`.
+
+The `301` is expected before TLS because Forgejo already declares the canonical URL:
+
+```text
+ROOT_URL = https://git.criandofacil.com.br/
 ```
 
-Apply only after preview:
+Therefore HTTP is redirected toward HTTPS even before the certificate is issued.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/stage-b-nginx.sh | sudo bash -s -- --apply
-```
-
-The vhost follows Forgejo's documented Nginx proxy requirements:
-
-- `merge_slashes off`;
-- proxy to `http://127.0.0.1:3000`;
-- preserve Host / forwarded headers;
-- support connection upgrade;
-- `client_max_body_size 512M`.
-
-B1 does **not** touch DNS, TLS, firewall, sshd, or runners.
+Existing warnings from the unrelated `doxa-upload` vhost about protocol options redefinition were already present before this deployment and are not blockers for Forgejo.
 
 ### Stage B2 — DNS
 
@@ -168,18 +169,28 @@ Create/verify DNS for:
 git.criandofacil.com.br
 ```
 
+Recommended record:
+
+```text
+type:      A
+name/host: git
+value:     public IPv4 of criandofacil-vps
+TTL:       provider default, or a short TTL during rollout
+```
+
 It must resolve to the selected VPS before Certbot is run.
 
-Host-side checks:
+Host-side check:
 
 ```bash
 getent ahostsv4 git.criandofacil.com.br
-curl -I http://git.criandofacil.com.br/
 ```
+
+The returned IPv4 must be the selected VPS public IPv4.
 
 ### Stage B3 — TLS
 
-After DNS is correct and HTTP reaches the new vhost:
+After DNS is correct and HTTP reaches the vhost:
 
 ```bash
 sudo certbot --nginx -d git.criandofacil.com.br --redirect
@@ -194,6 +205,15 @@ sudo certbot certificates
 ```
 
 Forgejo itself remains plain HTTP on loopback; Nginx terminates TLS.
+
+Expected final path:
+
+```text
+https://git.criandofacil.com.br
+       -> Nginx :443
+       -> 127.0.0.1:3000
+       -> Forgejo
+```
 
 ## Stage C — Git SSH
 
