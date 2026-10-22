@@ -16,6 +16,7 @@ FORGEJO_HTTP_PORT="3000"
 FORGEJO_USER="git"
 FORGEJO_GROUP="git"
 FORGEJO_HOME="/var/lib/forgejo"
+FORGEJO_REPO_ROOT="${FORGEJO_HOME}/data/forgejo-repositories"
 FORGEJO_CONFIG="/etc/forgejo/app.ini"
 FORGEJO_LOG="/var/log/forgejo"
 FORGEJO_BIN="/usr/local/bin/forgejo"
@@ -70,11 +71,12 @@ cat <<EOF
 1. Ensure download/verification tools exist.
 2. Download and verify Forgejo v${FORGEJO_VERSION}.
 3. Create dedicated OS user '${FORGEJO_USER}'.
-4. Create dedicated PostgreSQL role/database.
-5. Create root-owned Forgejo configuration with all required secrets pre-generated.
-6. Install a systemd service bound only to ${FORGEJO_HTTP_ADDR}:${FORGEJO_HTTP_PORT}.
-7. Create one local admin user (${ADMIN_USER}) with a random initial password.
-8. Start Forgejo and verify localhost health.
+4. Create Forgejo data paths including the Git repository root.
+5. Create dedicated PostgreSQL role/database.
+6. Create root-owned Forgejo configuration with all required secrets pre-generated.
+7. Install a systemd service bound only to ${FORGEJO_HTTP_ADDR}:${FORGEJO_HTTP_PORT}.
+8. Create one local admin user (${ADMIN_USER}) with a random initial password.
+9. Start Forgejo and verify localhost health.
 
 NOT touched in this stage:
 - Nginx configuration
@@ -123,6 +125,7 @@ if ! id "$FORGEJO_USER" >/dev/null 2>&1; then
 fi
 install -d -o "$FORGEJO_USER" -g "$FORGEJO_GROUP" -m 0750 "$FORGEJO_HOME"
 install -d -o "$FORGEJO_USER" -g "$FORGEJO_GROUP" -m 0750 "$FORGEJO_HOME/data" "$FORGEJO_HOME/custom"
+install -d -o "$FORGEJO_USER" -g "$FORGEJO_GROUP" -m 0750 "$FORGEJO_REPO_ROOT"
 install -d -o "$FORGEJO_USER" -g "$FORGEJO_GROUP" -m 0750 "$FORGEJO_HOME/.ssh"
 install -d -o "$FORGEJO_USER" -g "$FORGEJO_GROUP" -m 0750 "$FORGEJO_LOG"
 install -d -o root -g "$FORGEJO_GROUP" -m 0750 /etc/forgejo
@@ -167,7 +170,7 @@ PASSWD = ${DB_PASS}
 SSL_MODE = disable
 
 [repository]
-ROOT = ${FORGEJO_HOME}/data/forgejo-repositories
+ROOT = ${FORGEJO_REPO_ROOT}
 
 [log]
 MODE = console,file
