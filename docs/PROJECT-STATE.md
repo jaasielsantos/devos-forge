@@ -76,6 +76,7 @@ Durable decisions are captured in `docs/DECISIONS.md` (D-014 through D-019) and 
 - `docs/ADR-001-V1-DEPLOYMENT.md`
 - `scripts/bootstrap-server-v1.sh`
 - `docs/HOST-CRIANDOFACIL.md`
+- `docs/DEPLOYMENT.md`
 
 The bootstrap script is dry-run by default and Stage A does not alter Nginx, DNS, TLS, firewall, sshd, Forgejo Runner, or the existing GitHub runner.
 
@@ -93,6 +94,7 @@ The current GitHub repository is public. Never commit runtime passwords, tokens,
 - [x] durable V1 host decisions documented;
 - [x] pilot repository selected;
 - [x] executable Stage A bootstrap prepared;
+- [x] README/deployment/checkpoint docs synchronized;
 - [ ] Stage A dry-run reviewed;
 - [ ] Stage A applied and local health validated.
 
