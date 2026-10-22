@@ -9,9 +9,9 @@ The architecture must be simple enough to operate on a VPS, but explicit enough 
 ## 2. System context
 
 ```text
-Developer / DevOS / Agent
+Human / DevOS / Agent
           |
-          | SSH / HTTPS / API
+          | Chat / CLI / Git / SSH / API
           v
 +-----------------------------+
 |        Public endpoint      |
@@ -49,6 +49,41 @@ Developer / DevOS / Agent
                               isolated jobs /
                               Docker workloads
 ```
+
+## 2.1 Interaction model — headless first
+
+The initial product surface is operational, not visual.
+
+Primary paths:
+
+```text
+Human
+  |
+  +--> Chat / DevOS command
+  |          |
+  |          v
+  |     ForgeProvider / API
+  |          |
+  |          v
+  |        Forgejo
+  |
+  +--> Git CLI / SSH / HTTPS
+             |
+             v
+           Forgejo
+```
+
+There is no custom DevOS Forge UI in V1.
+
+Forgejo's native web interface remains enabled because it is useful for:
+
+- initial administration;
+- emergency/manual access;
+- visual inspection of repositories, diffs and runs;
+- manual review when faster than scripting;
+- diagnostics and recovery.
+
+It is explicitly not the primary interaction surface and should not receive custom design work until a real user need appears.
 
 ## 3. Initial components
 
@@ -197,6 +232,8 @@ ForgeProvider
 
 This interface is conceptual until DevOS integration work begins. It should be driven by actual operations we need, not speculative completeness.
 
+The headless-first decision increases the importance of this boundary: actions normally performed by clicking through a forge UI should become automatable through the provider/API wherever practical.
+
 ## 6. Agent-native evolution
 
 The future layer belongs above Git/Forgejo:
@@ -276,6 +313,9 @@ Recoverability is.
 ## 9. Design constraints
 
 - Small private installation, not internet-scale SaaS.
+- Headless-first operation; no custom V1 UI.
+- Prefer Chat/CLI/Git/SSH/API automation over manual clicking.
+- Preserve Forgejo's native UI as an operational fallback.
 - Prefer boring, well-supported components.
 - Keep infrastructure reproducible.
 - Avoid unnecessary distributed systems.
