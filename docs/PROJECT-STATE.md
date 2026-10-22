@@ -2,14 +2,14 @@
 
 ## Status
 
-**Phase:** 0 → 1 transition  
-**Implementation:** executable bootstrap prepared; not applied yet  
+**Phase:** 1 — Bootstrap  
+**Implementation:** Stage A dry-run validated; apply pending  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Bootstrap Forgejo locally on the selected VPS, expose it through the existing Nginx/TLS stack, register a Podman-backed Forgejo Runner, and prove the complete Git + CI lifecycle without operational GitHub dependency.
+Apply the validated Stage A bootstrap on `criandofacil-vps`, verify Forgejo locally on `127.0.0.1:3000`, then advance to DNS/Nginx/TLS, Git SSH, Forgejo Runner, pilot migration, and backup/restore validation.
 
 ## Locked V1 topology
 
@@ -80,6 +80,23 @@ Durable decisions are captured in `docs/DECISIONS.md` (D-014 through D-019) and 
 
 The bootstrap script is dry-run by default and Stage A does not alter Nginx, DNS, TLS, firewall, sshd, Forgejo Runner, or the existing GitHub runner.
 
+## Stage A validation
+
+Dry-run executed successfully on `criandofacil-vps`.
+
+Observed plan:
+
+1. ensure download/verification tools;
+2. download and verify Forgejo 15.0.10;
+3. create dedicated OS user `git`;
+4. create dedicated PostgreSQL role/database;
+5. create restricted Forgejo configuration with generated secrets;
+6. install systemd service bound only to `127.0.0.1:3000`;
+7. create local admin user `jaasielsantos` with random initial password;
+8. start Forgejo and verify localhost health.
+
+Dry-run produced no blocker and confirmed that Nginx, DNS/TLS, firewall, sshd, the existing GitHub runner, and Forgejo Runner/Podman remain untouched in Stage A.
+
 ## Security gate
 
 The current GitHub repository is public. Never commit runtime passwords, tokens, private keys, database credentials, or generated Forgejo secrets. Runtime secrets stay on the VPS with restricted permissions.
@@ -95,7 +112,7 @@ The current GitHub repository is public. Never commit runtime passwords, tokens,
 - [x] pilot repository selected;
 - [x] executable Stage A bootstrap prepared;
 - [x] README/deployment/checkpoint docs synchronized;
-- [ ] Stage A dry-run reviewed;
+- [x] Stage A dry-run reviewed;
 - [ ] Stage A applied and local health validated.
 
 ## Phase 1 sequence
@@ -113,7 +130,7 @@ Stage G  Forgejo becomes source of truth
 ## Immediate next action
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/bootstrap-server-v1.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/bootstrap-server-v1.sh | sudo bash -s -- --apply
 ```
 
-Review the dry-run. If clean, rerun explicitly with `--apply`.
+After apply, capture the script output and verify `forgejo.service` plus the localhost health endpoint before moving to Stage B.
