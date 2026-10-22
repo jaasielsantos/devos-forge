@@ -13,7 +13,10 @@ DevOS Forge should begin as infrastructure ownership, not as a custom forge rewr
 The near-term system is:
 
 ```text
-Users / DevOS / Agents
+Human / DevOS / Agent
+        |
+        v
+Chat / CLI / Git / SSH / API
         |
         v
   DevOS Forge endpoint
@@ -29,6 +32,8 @@ Git repositories        Forgejo Actions
                             v
                        Our Runner(s)
 ```
+
+The initial operating model is headless-first. No custom DevOS Forge UI will be built in V1. Forgejo's native web interface remains available only as an administrative, diagnostic, and manual-review fallback.
 
 The long-term differentiator belongs above the mature Git layer:
 
@@ -53,6 +58,8 @@ human intent
 - Preserve a provider abstraction between DevOS and the forge implementation.
 - Avoid building a custom forge engine until real operational evidence justifies it.
 - Migrate away from GitHub incrementally, using a pilot repository first.
+- Operate V1 headless-first through Chat/CLI/Git/SSH/API; do not build a custom UI.
+- Keep Forgejo's native UI available as fallback rather than as the primary interaction surface.
 
 See `docs/DECISIONS.md` for durable decision records.
 
@@ -99,6 +106,7 @@ Phase 0 is complete when we have:
 - [x] backup and restore strategy baseline documented;
 - [x] migration plan documented;
 - [x] read-only VPS preflight procedure documented;
+- [x] initial interaction model decided: headless-first, no custom V1 UI;
 - [ ] VPS preflight evidence collected and analyzed;
 - [ ] host-specific deployment runbook ready to execute;
 - [ ] one pilot repository selected.
@@ -116,7 +124,7 @@ create branch
         ->
 push
         ->
-open pull request
+open pull request through API/automation when practical
         ->
 trigger CI
         ->
@@ -134,27 +142,17 @@ release or deploy
 - building our own Git protocol implementation;
 - recreating social features;
 - building a marketplace;
+- building or customizing a dedicated DevOS Forge web UI;
 - replacing Forgejo internals prematurely;
 - designing agent-native features before the base forge is operational.
 
 ## Immediate next action
 
-**Execute the read-only VPS preflight in `docs/PREFLIGHT.md` and analyze its output.**
+**Complete the directed inspection of `criandofacil-vps` and convert the generic deployment baseline into a host-specific runbook.**
 
-The preflight maps:
+The selected initial topology is intentionally simple: one VPS first. The second VPS remains outside the initial runtime and can later be used for backup, disaster recovery, or extra runner capacity if real usage justifies it.
 
-1. OS and runtime versions;
-2. existing Docker/Compose state;
-3. current reverse proxy and ingress;
-4. ports and firewall;
-5. network interfaces;
-6. CPU/RAM/disk capacity;
-7. current volumes/networks/containers;
-8. PostgreSQL presence or conflicts;
-9. SSH exposure;
-10. backup/monitoring mechanisms already present.
-
-After evidence is collected, resolve the open deployment choices and generate the host-specific Compose/ingress/backup/restore runbook.
+After evidence is collected, resolve the open deployment choices and generate the host-specific ingress/Forgejo/PostgreSQL/runner/backup/restore runbook.
 
 ## Checkpoint rule
 
