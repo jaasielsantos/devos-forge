@@ -71,7 +71,7 @@ cat <<EOF
 2. Download and verify Forgejo v${FORGEJO_VERSION}.
 3. Create dedicated OS user '${FORGEJO_USER}'.
 4. Create dedicated PostgreSQL role/database.
-5. Create root-owned Forgejo configuration with generated secrets.
+5. Create root-owned Forgejo configuration with all required secrets pre-generated.
 6. Install a systemd service bound only to ${FORGEJO_HTTP_ADDR}:${FORGEJO_HTTP_PORT}.
 7. Create one local admin user (${ADMIN_USER}) with a random initial password.
 8. Start Forgejo and verify localhost health.
@@ -140,6 +140,7 @@ PGPASSWORD="$DB_PASS" psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -Atqc 'SELEC
 say "Generate Forgejo secrets and configuration"
 SECRET_KEY="$(sudo -u "$FORGEJO_USER" "$FORGEJO_BIN" generate secret SECRET_KEY)"
 INTERNAL_TOKEN="$(sudo -u "$FORGEJO_USER" "$FORGEJO_BIN" generate secret INTERNAL_TOKEN)"
+OAUTH2_JWT_SECRET="$(sudo -u "$FORGEJO_USER" "$FORGEJO_BIN" generate secret JWT_SECRET)"
 cat > "$FORGEJO_CONFIG" <<EOF
 APP_NAME = DevOS Forge
 RUN_USER = ${FORGEJO_USER}
@@ -185,6 +186,9 @@ INSTALL_LOCK = true
 SECRET_KEY = ${SECRET_KEY}
 INTERNAL_TOKEN = ${INTERNAL_TOKEN}
 GLOBAL_TWO_FACTOR_REQUIREMENT = admin
+
+[oauth2]
+JWT_SECRET = ${OAUTH2_JWT_SECRET}
 EOF
 chown root:"$FORGEJO_GROUP" "$FORGEJO_CONFIG"
 chmod 0640 "$FORGEJO_CONFIG"
