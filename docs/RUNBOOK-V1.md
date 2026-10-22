@@ -11,16 +11,18 @@ This file contains **no live secret values**. Secrets are generated on the host 
 ```text
 Internet
   |
-  v
-existing Nginx :80/:443
+  +--> HTTPS :443 --> existing Nginx / TLS
+  |                    |
+  |                    v
+  |              127.0.0.1:3000
+  |                    |
+  |                    v
+  |                 Forgejo
   |
-  v
-Forgejo v15 LTS
-(native binary + systemd)
-127.0.0.1:3000
-  |
+  `--> SSH :22 --> existing OpenSSH --> git user --> Forgejo serv
+
+Forgejo
   +--> existing PostgreSQL 16 on loopback
-  +--> system OpenSSH :22 for Git SSH
   +--> /var/lib/forgejo persistent data
   `--> Forgejo Actions
           |
@@ -31,7 +33,7 @@ Forgejo v15 LTS
 
 ## Why this shape
 
-The selected host already provides Nginx, PostgreSQL 16, Certbot, Git, OpenSSH and Podman. The V1 therefore minimizes change surface:
+The selected host already provides Nginx, PostgreSQL 16, Certbot, Git, OpenSSH and Podman. V1 therefore minimizes change surface:
 
 - do not deploy another reverse proxy;
 - do not deploy another PostgreSQL instance;
@@ -73,8 +75,6 @@ V1 hostname:
 git.criandofacil.com.br
 ```
 
-The hostname becomes externally usable only after DNS points to the VPS and TLS is issued.
-
 ## Database choices
 
 Reuse PostgreSQL 16 with dedicated objects:
@@ -99,8 +99,6 @@ V1 is private/headless-first:
 
 ## Stage A — local server bootstrap — COMPLETE
 
-Stage A is healthy.
-
 Acceptance passed:
 
 ```text
@@ -109,8 +107,6 @@ forgejo.service = active
 /api/healthz = healthy
 PostgreSQL connection = healthy
 initial admin = created
-Nginx configuration = untouched by Stage A
-existing GitHub runner = untouched
 ```
 
 ### Stage A incident / fix
@@ -126,87 +122,38 @@ Durable correction:
 
 Do **not** paste `/root/devos-forge-initial-admin.txt` into chat.
 
-## Stage B — DNS + Nginx + TLS
+## Stage B — Nginx + DNS + TLS — COMPLETE
 
-Stage B is split to keep certificate issuance separate from ingress configuration.
+### B1 — Nginx reverse proxy
 
-### Stage B1 — Nginx HTTP reverse proxy — COMPLETE
+`scripts/stage-b-nginx.sh` was previewed and applied successfully.
 
-Repository script:
+Validated:
 
-```text
-scripts/stage-b-nginx.sh
-```
+- dedicated vhost for `git.criandofacil.com.br`;
+- proxy target `http://127.0.0.1:3000`;
+- `merge_slashes off`;
+- required proxy/forwarded headers;
+- 512 MiB body-size ceiling;
+- `nginx -t` passes.
 
-The script was previewed and applied successfully.
+### B2 — DNS
 
-Validated result:
+`git.criandofacil.com.br` resolves to the selected VPS.
 
-- dedicated HTTP vhost installed for `git.criandofacil.com.br`;
-- reverse proxy target is `http://127.0.0.1:3000`;
-- `merge_slashes off` present;
-- Host / forwarded / upgrade headers present;
-- `client_max_body_size 512M` present;
-- `nginx -t` passed before reload;
-- Nginx reloaded successfully;
-- local Host-header smoke test reached the Forgejo route and returned `301 Moved Permanently`.
+### B3 — TLS
 
-The `301` is expected before TLS because Forgejo already declares the canonical URL:
+Certbot completed successfully using the existing Nginx integration.
+
+Validated:
 
 ```text
-ROOT_URL = https://git.criandofacil.com.br/
+HTTPS = healthy
+nginx -t = pass
+https://git.criandofacil.com.br/api/healthz = status pass
 ```
 
-Therefore HTTP is redirected toward HTTPS even before the certificate is issued.
-
-Existing warnings from the unrelated `doxa-upload` vhost about protocol options redefinition were already present before this deployment and are not blockers for Forgejo.
-
-### Stage B2 — DNS
-
-Create/verify DNS for:
-
-```text
-git.criandofacil.com.br
-```
-
-Recommended record:
-
-```text
-type:      A
-name/host: git
-value:     public IPv4 of criandofacil-vps
-TTL:       provider default, or a short TTL during rollout
-```
-
-It must resolve to the selected VPS before Certbot is run.
-
-Host-side check:
-
-```bash
-getent ahostsv4 git.criandofacil.com.br
-```
-
-The returned IPv4 must be the selected VPS public IPv4.
-
-### Stage B3 — TLS
-
-After DNS is correct and HTTP reaches the vhost:
-
-```bash
-sudo certbot --nginx -d git.criandofacil.com.br --redirect
-```
-
-Then validate:
-
-```bash
-sudo nginx -t
-curl -fsS https://git.criandofacil.com.br/api/healthz
-sudo certbot certificates
-```
-
-Forgejo itself remains plain HTTP on loopback; Nginx terminates TLS.
-
-Expected final path:
+Final web path:
 
 ```text
 https://git.criandofacil.com.br
@@ -215,17 +162,86 @@ https://git.criandofacil.com.br
        -> Forgejo
 ```
 
+Forgejo itself remains plain HTTP on loopback; Nginx terminates TLS.
+
 ## Stage C — Git SSH
 
 Use the existing OpenSSH service on port 22.
 
-Forgejo runs with `START_SSH_SERVER = false` and manages the dedicated `git` user's authorized keys. Expected clone form:
+Forgejo runs with `START_SSH_SERVER = false`. `SSH_PORT = 22` is the port shown in clone URLs. In this system-OpenSSH mode Forgejo manages the dedicated `git` user's `authorized_keys` file by default; `forgejo admin regenerate keys` can rebuild that file from public keys stored in Forgejo.
+
+Expected clone form:
 
 ```text
 git@git.criandofacil.com.br:<owner>/<repo>.git
 ```
 
-Do not open an additional SSH port unless the system-OpenSSH path proves incompatible.
+Do not open an additional SSH port unless system OpenSSH proves incompatible.
+
+### C1 — read-only preflight
+
+Repository script:
+
+```text
+scripts/stage-c-ssh-preflight.sh
+```
+
+Run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/stage-c-ssh-preflight.sh | sudo bash
+```
+
+It checks without modifying the host:
+
+- HTTPS health;
+- Forgejo service state;
+- OpenSSH service and port 22 listener;
+- effective `sshd` settings including `AuthorizedKeysFile` and `StrictModes`;
+- `git` OS account/home;
+- `.ssh` / `authorized_keys` existence and permissions;
+- non-secret Forgejo SSH settings;
+- count/shape of Forgejo-managed authorized-key entries;
+- DNS resolution.
+
+### C2 — client key enrollment
+
+Add **one explicitly intended client public key** to the `jaasielsantos` Forgejo account.
+
+Never upload or paste a private SSH key. Do not automatically reuse arbitrary keys found on the VPS.
+
+After the public key is stored in Forgejo, if needed rebuild the managed file:
+
+```bash
+sudo -u git /usr/local/bin/forgejo admin regenerate keys \
+  --config /etc/forgejo/app.ini \
+  --work-path /var/lib/forgejo
+```
+
+Then inspect only metadata/counts, not private material.
+
+### C3 — SSH authentication test
+
+From the intended client machine:
+
+```bash
+ssh -T git@git.criandofacil.com.br
+```
+
+A Forgejo-specific authenticated response is success; an interactive shell is neither expected nor desired.
+
+### C4 — repository clone/push test
+
+After a pilot repository exists in Forgejo:
+
+```text
+clone via SSH
+ -> branch
+ -> commit
+ -> push
+```
+
+Stage C is complete only after SSH authentication and a real Git push both succeed.
 
 ## Stage D — Forgejo Runner
 
@@ -254,8 +270,6 @@ Concurrency policy:
 while GitHub runner remains active: runner.capacity = 1
 after GitHub runner retirement + load validation: runner.capacity = 2
 ```
-
-This preserves the desired two-job capability without accidentally allowing GitHub + Forgejo to create three competing jobs on a 1-vCPU host.
 
 ## Stage E — pilot migration
 
