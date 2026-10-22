@@ -124,6 +124,29 @@ curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scri
   | sudo bash -s -- --apply
 ```
 
+### Stage A incident note — OAuth2 JWT secret
+
+The first Stage A apply reached systemd startup but Forgejo entered a restart loop because `oauth2.JWT_SECRET` was absent and Forgejo attempted to write it into `/etc/forgejo/app.ini`. The configuration is intentionally `root:git 0640`, so the service user cannot mutate that file.
+
+The durable fix is to pre-generate `JWT_SECRET` in the bootstrap and write it into `[oauth2]` before service startup. **Do not weaken the configuration-file permissions.**
+
+For the already-created partial installation, use the targeted repair script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/repair-stage-a-oauth2-secret.sh \
+  | sudo bash
+```
+
+The repair script:
+
+- stops only `forgejo.service`;
+- generates `JWT_SECRET` locally with the Forgejo CLI;
+- appends `[oauth2]` only when that section is absent;
+- preserves `root:git 0640` on `app.ini`;
+- starts Forgejo again;
+- verifies `http://127.0.0.1:3000/api/healthz`;
+- refuses ambiguous existing `[oauth2]` state rather than guessing.
+
 ### Stage A acceptance
 
 All must pass:
