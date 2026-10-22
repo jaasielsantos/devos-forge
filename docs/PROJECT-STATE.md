@@ -3,13 +3,13 @@
 ## Status
 
 **Phase:** 1 — Bootstrap / ingress  
-**Implementation:** Stage A complete; Stage B Nginx HTTP dry-run next  
+**Implementation:** Stage A complete; Stage B1 Nginx HTTP complete; DNS next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Expose the healthy local Forgejo instance through the existing Nginx stack, then complete DNS/TLS, validate Git SSH, register Forgejo Runner with rootless Podman, migrate the `devos-forge` pilot, and prove backup/restore.
+Point `git.criandofacil.com.br` at the selected VPS, complete TLS through the existing Certbot/Nginx stack, then validate Git SSH, register Forgejo Runner with rootless Podman, migrate the `devos-forge` pilot, and prove backup/restore.
 
 ## Locked V1 topology
 
@@ -56,7 +56,7 @@ Durable decisions are captured in `docs/DECISIONS.md` and summarized in `docs/AD
 
 ## Stage A — completed
 
-Stage A is now healthy on `criandofacil-vps`.
+Stage A is healthy on `criandofacil-vps`.
 
 Validated evidence:
 
@@ -65,8 +65,7 @@ Validated evidence:
 - `GET /api/healthz` returns `status: pass`;
 - cache health passes;
 - PostgreSQL health passes;
-- the initial local administrator was created by the repair/completion script;
-- Nginx, DNS/TLS, firewall, sshd, the existing GitHub runner, and Forgejo Runner remain untouched by Stage A.
+- the initial local administrator was created by the repair/completion script.
 
 ### Stage A incident and durable fix
 
@@ -83,18 +82,27 @@ The durable fix is now in source:
 Stage B is intentionally split:
 
 ```text
-B1  install HTTP Nginx reverse proxy
-B2  create/verify DNS for git.criandofacil.com.br
-B3  request TLS with existing Certbot workflow
+[x] B1  install HTTP Nginx reverse proxy
+[ ] B2  create/verify DNS for git.criandofacil.com.br
+[ ] B3  request TLS with existing Certbot workflow
 ```
 
-The repository contains a guarded B1 script:
+### B1 evidence
 
-```text
-scripts/stage-b-nginx.sh
-```
+`scripts/stage-b-nginx.sh` was previewed and applied successfully.
 
-It is dry-run by default and follows the Forgejo reverse-proxy requirements, including `merge_slashes off`, proxy headers, and a 512 MiB body-size ceiling.
+Validated evidence:
+
+- existing Nginx configuration remained syntactically valid;
+- a dedicated HTTP vhost for `git.criandofacil.com.br` was installed;
+- upstream is `http://127.0.0.1:3000`;
+- `merge_slashes off` and required proxy headers are present;
+- Nginx reloaded successfully;
+- local Host-header smoke test reached the Forgejo path and returned `301 Moved Permanently`.
+
+The `301` is expected at this point because Forgejo's canonical `ROOT_URL` is already HTTPS. TLS is intentionally deferred until DNS resolves correctly.
+
+Existing unrelated warnings from `doxa-upload` about protocol options redefinition remain unchanged and are not blockers for the Forgejo vhost.
 
 ## Executable artifacts
 
@@ -116,7 +124,7 @@ The Forgejo web listener must remain loopback-only. Public access is through Ngi
 
 ```text
 [x] Stage A  local Forgejo bootstrap + health
-[ ] Stage B  DNS + Nginx + TLS
+[~] Stage B  Nginx complete; DNS/TLS pending
 [ ] Stage C  Git SSH validation
 [ ] Stage D  Forgejo Runner + Podman
 [ ] Stage E  migrate devos-forge pilot
@@ -126,10 +134,14 @@ The Forgejo web listener must remain loopback-only. Public access is through Ngi
 
 ## Immediate next action
 
-Preview Stage B1 on `criandofacil-vps`:
+Create or verify the DNS `A` record for `git.criandofacil.com.br` pointing to the selected VPS public IPv4.
+
+After public DNS resolution is confirmed, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/stage-b-nginx.sh | sudo bash
+sudo certbot --nginx -d git.criandofacil.com.br --redirect
+sudo nginx -t
+curl -fsS https://git.criandofacil.com.br/api/healthz
 ```
 
-If the dry-run is clean, apply explicitly with `--apply`. Do not request a certificate until DNS for `git.criandofacil.com.br` resolves to the selected VPS.
+Do not proceed to Forgejo Runner until HTTPS health is validated.
