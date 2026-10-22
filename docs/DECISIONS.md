@@ -241,3 +241,66 @@ A custom UI would add implementation and maintenance cost without improving the 
 - document common commands and DevOS operations rather than designing dashboards;
 - use Forgejo's native UI only when manual inspection, administration, review, or emergency access is useful;
 - reconsider a custom interface only when real multi-user or visual workflow requirements appear.
+
+---
+
+## D-012 — V1 runs on one VPS: `criandofacil-vps`
+
+**Status:** Accepted  
+**Date:** 2026-10-22
+
+### Decision
+
+The first production-shaped DevOS Forge deployment will run on a single VPS, accessed through the local SSH alias `criandofacil-vps` and currently identified by the host as `srv1805473`.
+
+The second VPS is intentionally excluded from the initial runtime.
+
+### Why
+
+The objective is operational independence with the smallest reliable architecture. Splitting control-plane and runner workloads across two hosts before real load requires it would add networking, deployment, recovery, and debugging complexity without immediate benefit.
+
+The selected host already provides useful baseline infrastructure, including Nginx, PostgreSQL 16, TLS automation through Certbot, swap, and sufficient free memory/disk for the initial private workload.
+
+### Initial logical topology
+
+```text
+criandofacil-vps
+|
++-- existing Nginx / TLS
++-- Forgejo
++-- existing PostgreSQL 16 (dedicated Forgejo DB/user)
++-- Forgejo Actions
++-- self-hosted runner capacity
++-- persistent Git / Forgejo data
+`-- backup / restore jobs
+```
+
+### Consequences
+
+- prefer integration with existing Nginx and PostgreSQL instead of duplicating them;
+- keep the second VPS available for future backup, disaster recovery, or additional runner capacity;
+- accept a single-host runtime failure domain in V1;
+- require offsite backup and a documented restore path before broad migration;
+- scale out only when measurements or operational pain justify it.
+
+---
+
+## D-013 — Initial runner target allows up to two concurrent jobs
+
+**Status:** Accepted with validation requirement  
+**Date:** 2026-10-22
+
+### Decision
+
+Design the V1 runner layer so it can support up to two concurrent jobs, matching the existing working style, but validate CPU and memory behavior on `criandofacil-vps` before making two-way concurrency the permanent default.
+
+### Why
+
+The host has limited CPU capacity, while normal workflows may benefit from two jobs in parallel. The right policy is therefore to preserve the capability without assuming that all workloads should always run concurrently.
+
+### Consequences
+
+- runner concurrency must be configurable;
+- start with controlled workloads and observe load;
+- heavy jobs may be serialized if contention is excessive;
+- a second VPS may later provide extra runner capacity without moving Forgejo itself.
