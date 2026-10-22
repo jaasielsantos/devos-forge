@@ -2,16 +2,16 @@
 
 ## Status
 
-**Phase:** 0 — Foundation and design  
-**Implementation:** not deployed yet  
+**Phase:** 0 → 1 transition  
+**Implementation:** executable bootstrap prepared; not applied yet  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
-**Primary objective:** convert the selected host baseline into an executable Forgejo + runner deployment and validate the complete Git + CI lifecycle without GitHub dependency.
+**Pilot repository:** `devos-forge`
 
-## Current thesis
+## Current objective
 
-DevOS Forge should begin as infrastructure ownership, not as a custom forge rewrite.
+Bootstrap Forgejo locally on the selected VPS, expose it safely through the existing Nginx/TLS stack, register a Podman-backed Forgejo Runner, and prove the complete Git + CI lifecycle without operational GitHub dependency.
 
-The near-term system is:
+## Locked V1 topology
 
 ```text
 Human / DevOS / Agent
@@ -20,185 +20,122 @@ Human / DevOS / Agent
 Chat / CLI / Git / SSH / API
         |
         v
-  DevOS Forge endpoint
+existing Nginx :443
         |
         v
-     Forgejo
+Forgejo 15 LTS
+native binary + systemd
         |
-   +----+-------------------+
-   |                        |
-   v                        v
-Git repositories        Forgejo Actions
-                            |
-                            v
-                    Self-hosted runner(s)
+   +----+--------------------+
+   |                         |
+   v                         v
+PostgreSQL 16           Forgejo Actions
+(existing)                   |
+                              v
+                       Forgejo Runner
+                              |
+                              v
+                       rootless Podman
 ```
 
-The initial operating model is headless-first. No custom DevOS Forge UI will be built in V1. Forgejo's native web interface remains available only as an administrative, diagnostic, and manual-review fallback.
+V1 remains on one VPS. The second VPS is not part of the initial runtime.
 
-The long-term differentiator belongs above the mature Git layer:
+## Directed host inspection — completed
 
-```text
-human intent
-  -> PDS
-  -> explicit choices
-  -> PBI
-  -> PBP
-  -> agent execution
-  -> evidence / policy
-  -> Git history
-```
-
-## Confirmed decisions
-
-- Use Git as the source-control substrate.
-- Use Forgejo as the initial forge implementation.
-- Host the V1 forge on `criandofacil-vps` (`srv1805473`).
-- Keep V1 on one VPS rather than splitting control and execution across two hosts.
-- Reuse the host's existing Nginx/PostgreSQL infrastructure where appropriate.
-- Use self-hosted runners under our control.
-- Design the runner layer for up to two concurrent jobs, subject to resource validation.
-- Keep the second VPS out of the initial runtime; reserve it for future runner capacity, backup, or disaster recovery if needed.
-- Keep the initial scope private and sized for our own projects, not public internet scale.
-- Preserve a provider abstraction between DevOS and the forge implementation.
-- Avoid building a custom forge engine until real operational evidence justifies it.
-- Migrate away from GitHub incrementally, using a pilot repository first.
-- Operate V1 headless-first through Chat/CLI/Git/SSH/API; do not build a custom UI.
-- Keep Forgejo's native UI available as fallback rather than as the primary interaction surface.
-
-See `docs/DECISIONS.md` for durable decision records.
-
-## VPS evidence collected
-
-Both available VPS hosts were inspected read-only.
-
-### Selected: `criandofacil-vps` / `srv1805473`
-
-Observed baseline:
+The second read-only inspection of `criandofacil-vps` confirmed:
 
 - Ubuntu 24.04 LTS family;
 - 1 vCPU;
 - ~3.8 GiB RAM with ~3.2 GiB available at capture time;
 - 2 GiB swap;
-- ~34 GiB free disk;
-- active Nginx on ports 80/443;
-- active PostgreSQL 16 on loopback;
-- Certbot timer present;
-- existing application services already using local ports;
-- evidence of an existing GitHub Actions runner account/home;
-- Docker/Compose not present during the initial inspection.
+- ~32 GiB free disk at second capture;
+- Nginx 1.24 active and configuration valid;
+- existing sites for Criando Fácil and Doxa Upload;
+- Certbot active with automatic renewal timer;
+- PostgreSQL 16.15 active on loopback only;
+- no existing Forgejo database/role;
+- ports 3000 and standard Forgejo candidate paths currently free;
+- existing GitHub Actions runner active under `cf-gh-runner`;
+- Podman 4.9 present;
+- UFW active with inbound 22/80/443 only;
+- host OpenSSH active on port 22;
+- existing backup timer infrastructure.
 
-### Deferred: second VPS / `srv1979180`
+## Deployment decisions now locked
 
-The second VPS already has Docker/Compose and runner-oriented infrastructure, but using both hosts in V1 was intentionally rejected to minimize distributed-system complexity.
+- Forgejo server: **native binary + systemd**.
+- Initial Forgejo line: **15 LTS**, pinned by bootstrap to `15.0.10`.
+- Reverse proxy: reuse existing **Nginx**.
+- Database: reuse existing **PostgreSQL 16** with dedicated `forgejo` role/database.
+- Local web listener: **127.0.0.1:3000** only.
+- Candidate public hostname: **`git.criandofacil.com.br`**.
+- Git SSH: reuse existing **OpenSSH on port 22**; do not start Forgejo built-in SSH server.
+- Runner isolation: dedicated Forgejo Runner user + **rootless Podman**.
+- During GitHub/Forgejo coexistence: `runner.capacity = 1`.
+- After GitHub runner retirement and load validation: target `runner.capacity = 2`.
+- Custom DevOS Forge UI: none in V1; headless-first remains the operating model.
+- Pilot migration: **this `devos-forge` repository**.
 
-It remains available as an expansion target if real usage justifies it.
+## Executable artifacts
 
-## Foundation pack completed
+- `docs/RUNBOOK-V1.md` — host-specific deployment/runbook.
+- `scripts/bootstrap-server-v1.sh` — guarded Stage A bootstrap.
+- `docs/HOST-CRIANDOFACIL.md` — evidence and directed preflight procedure.
 
-The repository now contains:
+The bootstrap script is **dry-run by default** and deliberately does not touch Nginx, DNS, TLS, firewall, sshd, Forgejo Runner, or the existing GitHub Actions runner during Stage A.
 
-- `00_PROMPT_ZERO.md`;
-- `README.md`;
-- `docs/ARCHITECTURE.md`;
-- `docs/DECISIONS.md`;
-- `docs/ROADMAP.md`;
-- `docs/PREFLIGHT.md`;
-- `docs/HOST-CRIANDOFACIL.md`;
-- `docs/DEPLOYMENT.md`;
-- `docs/MIGRATION.md`;
-- `docs/OPERATIONS.md`;
-- `docs/SECURITY.md`.
+## Security note
 
-These documents establish the project boundary, phased strategy, security posture, recovery requirement, migration model, VPS discovery procedure, selected host baseline, and future agent-native direction.
+The current GitHub repository is public. No passwords, tokens, private keys, database credentials, or generated Forgejo secrets may be committed here.
 
-## Open decisions
-
-These must be resolved before production deployment:
-
-- [ ] final hostname/domain for the forge;
-- [x] V1 host selected: `criandofacil-vps`;
-- [x] V1 topology selected: one VPS first;
-- [x] reverse proxy family selected: reuse existing Nginx unless directed inspection exposes a blocker;
-- [x] database family selected: reuse existing PostgreSQL 16 with a dedicated Forgejo DB/user unless directed inspection exposes a blocker;
-- [ ] Forgejo packaging: native binary/systemd vs container;
-- [ ] exact Forgejo localhost web port;
-- [ ] Git-over-SSH exposure strategy;
-- [ ] storage layout and capacity allocation;
-- [ ] offsite backup destination;
-- [ ] backup retention policy;
-- [ ] runner runtime/isolation model;
-- [ ] exact initial runner concurrency after validation;
-- [ ] authentication policy and initial users;
-- [ ] mail/notification strategy, if required;
-- [ ] first pilot repository;
-- [ ] GitHub mirror policy during transition.
+Runtime secrets are generated and stored on the VPS with restricted permissions. The repository should become private before operational details expand further, or remain strictly secret-free until Forgejo becomes primary.
 
 ## Phase 0 exit criteria
 
-Phase 0 is complete when we have:
-
-- [x] initial production topology selected;
-- [x] deployment topology baseline documented;
+- [x] architecture baseline documented;
 - [x] security baseline documented;
-- [x] backup and restore strategy baseline documented;
-- [x] migration plan documented;
-- [x] read-only VPS preflight procedure documented;
-- [x] both candidate VPS hosts inspected and compared;
+- [x] migration baseline documented;
+- [x] both VPS hosts inspected;
 - [x] V1 host selected;
-- [x] initial interaction model decided: headless-first, no custom V1 UI;
-- [ ] directed `criandofacil-vps` inspection completed;
-- [ ] host-specific deployment runbook ready to execute;
-- [ ] one pilot repository selected.
+- [x] directed host inspection completed;
+- [x] Forgejo packaging selected;
+- [x] Nginx/PostgreSQL integration selected;
+- [x] Git SSH strategy selected;
+- [x] runner runtime/isolation selected;
+- [x] concurrency transition policy selected;
+- [x] pilot repository selected;
+- [x] executable Stage A bootstrap prepared;
+- [ ] Stage A dry-run reviewed;
+- [ ] Stage A bootstrap applied and local health validated.
 
-## Phase 1 target
-
-Deploy Forgejo and complete this circuit entirely on our infrastructure:
+## Phase 1 sequence
 
 ```text
-create/import repository
-        ->
-clone via SSH
-        ->
-create branch
-        ->
-push
-        ->
-open pull request through API/automation when practical
-        ->
-trigger CI
-        ->
-execute on self-hosted runner
-        ->
-merge
-        ->
-release or deploy
+Stage A  local Forgejo bootstrap
+   ↓
+Stage B  DNS + Nginx + TLS
+   ↓
+Stage C  Git SSH validation
+   ↓
+Stage D  Forgejo Runner + Podman
+   ↓
+Stage E  migrate devos-forge pilot
+   ↓
+backup / restore rehearsal
+   ↓
+Forgejo becomes source of truth
 ```
-
-## Non-goals right now
-
-- competing with GitHub as a public platform;
-- supporting massive multi-tenant scale;
-- building our own Git protocol implementation;
-- recreating social features;
-- building a marketplace;
-- building or customizing a dedicated DevOS Forge web UI;
-- splitting V1 across multiple VPS hosts without demonstrated need;
-- replacing Forgejo internals prematurely;
-- designing agent-native features before the base forge is operational.
 
 ## Immediate next action
 
-Run the directed read-only inspection in `docs/HOST-CRIANDOFACIL.md` on:
+Run the Stage A bootstrap in **dry-run mode** on `criandofacil-vps`:
 
 ```bash
-ssh criandofacil-vps
+curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/bootstrap-server-v1.sh | sudo bash
 ```
 
-The directed inspection resolves only the remaining host-specific questions: Nginx integration, PostgreSQL integration, Forgejo packaging, Git SSH, existing runner topology, runner isolation, storage, and backup integration.
-
-After that evidence is reviewed, convert `docs/DEPLOYMENT.md` into the executable V1 runbook and begin installation.
+If the guard checks and plan are clean, apply the same script explicitly with `--apply`.
 
 ## Checkpoint rule
 
-Update this file when a meaningful phase, decision, deployment state, blocker, or next action changes. Avoid turning it into a chronological activity log.
+Update this file only when a meaningful phase, decision, deployment state, blocker, or next action changes. Do not use it as a chronological activity log.
