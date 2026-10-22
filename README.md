@@ -2,29 +2,74 @@
 
 > Private, self-hosted software forge for the DevOS ecosystem.
 
-DevOS Forge exists to remove operational dependence on third-party Git hosting and CI infrastructure while preserving standard Git workflows.
+DevOS Forge exists to remove operational dependence on third-party Git hosting and CI infrastructure while preserving the Git workflow we already use.
 
-The project starts pragmatically: **Forgejo provides the mature forge substrate; DevOS adds orchestration, intent, policy, provenance, and agent-native execution over time.**
+The project starts pragmatically: **Forgejo provides the mature Git forge layer; DevOS adds orchestration, intent, policy, provenance, and agent-native execution over time.**
 
-## V1 operating model
+## Why this exists
 
-V1 is **headless-first**. Chat/CLI/Git/SSH/API are the primary interfaces. Forgejo's native web UI remains available as an administrative/manual fallback, but no custom DevOS Forge UI is being built initially.
+Today, a large part of the development workflow depends on external infrastructure for repository hosting, pull requests, CI/CD, runners, APIs, and availability.
 
-Selected runtime:
+DevOS Forge changes the ownership boundary:
 
 ```text
-criandofacil-vps
-   |
-   +-- existing Nginx / TLS
-   +-- Forgejo 15 LTS (native + systemd)
-   +-- existing PostgreSQL 16
-   +-- system OpenSSH :22
-   `-- Forgejo Runner -> rootless Podman
+Before
+
+Developer / Agent
+      |
+      v
+External Forge
+      |
+      +-- repositories
+      +-- pull requests
+      +-- CI/CD
+      +-- runners
+      +-- releases
+
+After
+
+Developer / Agent
+      |
+      v
+DevOS Forge on our VPS
+      |
+      +-- repositories
+      +-- pull requests
+      +-- CI/CD
+      +-- our runners
+      +-- releases
+      +-- DevOS integration
 ```
 
-The goal is **not** to recreate GitHub feature-for-feature. The goal is to own the forge capabilities we actually depend on and evolve them toward an agent-native development environment.
+The goal is **not** to recreate GitHub feature-for-feature.
+
+The goal is to own the subset of forge capabilities we actually depend on and evolve that foundation toward an agent-native development environment.
+
+## Initial scope
+
+The first production baseline is intentionally conventional and boring:
+
+- Forgejo
+- Git over SSH and HTTPS
+- private repositories
+- users and access control
+- branches, commits, tags and releases
+- issues and pull requests
+- webhooks and API
+- Forgejo Actions
+- self-hosted Forgejo Runner
+- rootless Podman-backed job isolation
+- PostgreSQL
+- reverse proxy + TLS
+- persistent storage
+- automated backups
+- observability and recovery procedures
 
 ## Long-term direction
+
+The long-term opportunity is not "a smaller GitHub".
+
+It is a forge where Git history is connected to human intent and agent execution:
 
 ```text
 Human Intent
@@ -51,11 +96,26 @@ Tests / Policies / Evidence
 Commit / Review / Merge
 ```
 
-Git remains the source-control substrate. The differentiated layer belongs above it.
+Over time, DevOS Forge may understand first-class concepts such as:
+
+- intent
+- decisions
+- PDS / PBI / PBP
+- agent identity
+- execution lineage
+- policies
+- test evidence
+- provenance
+- approvals
+- releases
+
+Git remains the source-control substrate. The innovation belongs above it.
 
 ## Architectural principle
 
 **Do not rewrite mature forge infrastructure until real usage proves that we need to.**
+
+The initial architecture therefore separates DevOS from the forge implementation:
 
 ```text
 DevOS
@@ -68,23 +128,31 @@ Forge Provider Contract
   `--> Future adapters / native components
 ```
 
+This keeps Forgejo replaceable without making replacement a current objective.
+
 ## Repository map
 
-- [`00_PROMPT_ZERO.md`](00_PROMPT_ZERO.md) — operating contract for AI-assisted work
-- [`docs/PROJECT-STATE.md`](docs/PROJECT-STATE.md) — live checkpoint and next action
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and trust boundaries
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — durable project decisions
-- [`docs/ADR-001-V1-DEPLOYMENT.md`](docs/ADR-001-V1-DEPLOYMENT.md) — accepted V1 host deployment ADR
-- [`docs/RUNBOOK-V1.md`](docs/RUNBOOK-V1.md) — executable deployment sequence
-- [`scripts/bootstrap-server-v1.sh`](scripts/bootstrap-server-v1.sh) — guarded Stage A bootstrap
-- [`docs/HOST-CRIANDOFACIL.md`](docs/HOST-CRIANDOFACIL.md) — selected host evidence summary
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment entrypoint
+- [`00_PROMPT_ZERO.md`](00_PROMPT_ZERO.md) — operating contract for AI-assisted work in this repository
+- [`docs/PROJECT-STATE.md`](docs/PROJECT-STATE.md) — current state and next actions
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — target architecture and boundaries
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decisions and rationale
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — staged implementation plan
+- [`docs/PREFLIGHT.md`](docs/PREFLIGHT.md) — read-only VPS discovery checklist
+- [`docs/HOST-CRIANDOFACIL.md`](docs/HOST-CRIANDOFACIL.md) — selected-host baseline and directed inspection evidence
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment baseline
+- [`docs/RUNBOOK-V1.md`](docs/RUNBOOK-V1.md) — executable host-specific deployment runbook
+- [`docs/ADR-001-V1-DEPLOYMENT.md`](docs/ADR-001-V1-DEPLOYMENT.md) — locked V1 deployment architecture
 - [`docs/MIGRATION.md`](docs/MIGRATION.md) — GitHub-to-Forgejo transition strategy
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — backup/recovery baseline
-- [`docs/SECURITY.md`](docs/SECURITY.md) — security posture
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — operational model, backup and recovery baseline
+- [`docs/SECURITY.md`](docs/SECURITY.md) — minimum security posture
+- [`scripts/bootstrap-server-v1.sh`](scripts/bootstrap-server-v1.sh) — guarded Forgejo server bootstrap
+- [`scripts/repair-stage-a-oauth2-secret.sh`](scripts/repair-stage-a-oauth2-secret.sh) — targeted Stage A repair
+- [`scripts/stage-b-nginx.sh`](scripts/stage-b-nginx.sh) — guarded Nginx reverse-proxy deployment
 
 ## Current phase
 
-**Phase 0 → Phase 1 transition.**
+**Phase 1 — bootstrap / ingress.**
 
-The host-specific deployment design is locked and the Stage A bootstrap is ready in dry-run mode. See `docs/PROJECT-STATE.md` for the current checkpoint.
+Forgejo is running locally on the selected VPS with PostgreSQL healthy and the local HTTP listener restricted to `127.0.0.1:3000`. The dedicated Nginx HTTP reverse-proxy vhost is installed. DNS and TLS for `git.criandofacil.com.br` are the next gate before Git SSH and runner validation.
+
+See [`docs/PROJECT-STATE.md`](docs/PROJECT-STATE.md) for the live checkpoint.
