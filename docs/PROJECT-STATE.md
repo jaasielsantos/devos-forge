@@ -68,7 +68,7 @@ Confirmed on `criandofacil-vps`:
 - no custom V1 UI;
 - `devos-forge` is the pilot repository.
 
-See `docs/ADR-001-V1-DEPLOYMENT.md` for rationale.
+Durable decisions are captured in `docs/DECISIONS.md` (D-014 through D-019) and summarized in `docs/ADR-001-V1-DEPLOYMENT.md`.
 
 ## Executable artifacts
 
@@ -90,6 +90,7 @@ The current GitHub repository is public. Never commit runtime passwords, tokens,
 - [x] V1 host and topology selected;
 - [x] directed host inspection completed;
 - [x] packaging, Nginx/PostgreSQL, Git SSH and runner model selected;
+- [x] durable V1 host decisions documented;
 - [x] pilot repository selected;
 - [x] executable Stage A bootstrap prepared;
 - [ ] Stage A dry-run reviewed;
