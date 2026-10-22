@@ -2,14 +2,14 @@
 
 ## Status
 
-**Phase:** 1 — Ingress complete / Git SSH validation  
-**Implementation:** Stage A and Stage B complete; Stage C preflight next  
+**Phase:** 1 — Git SSH validation  
+**Implementation:** Stage A and Stage B complete; Stage C preflight clean; client key enrollment next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Validate Forgejo Git-over-SSH through the existing system OpenSSH service on port 22, then register Forgejo Runner with rootless Podman, migrate the `devos-forge` pilot, and prove backup/restore.
+Enroll one explicitly intended client public SSH key into the `jaasielsantos` Forgejo account, validate authentication through the existing system OpenSSH service on port 22, then prove clone/push before moving to Forgejo Runner + rootless Podman.
 
 ## Locked V1 topology
 
@@ -86,16 +86,47 @@ Official Forgejo behavior for this model:
 
 - `START_SSH_SERVER = false`;
 - `SSH_PORT = 22` controls the clone URL;
-- when the internal SSH server is disabled, Forgejo can manage the dedicated `git` user's `authorized_keys` file;
-- `forgejo admin regenerate keys` can rebuild that file from keys stored in Forgejo.
+- when the internal SSH server is disabled, Forgejo manages the dedicated `git` user's `authorized_keys` file by default;
+- the file is expected to contain only Forgejo-managed keys/commands;
+- `forgejo admin regenerate keys` can rebuild it from keys stored in Forgejo.
 
-A read-only preflight is now available:
+### C1 — preflight COMPLETE
 
-```text
-scripts/stage-c-ssh-preflight.sh
+Validated on the target host:
+
+- HTTPS health = pass;
+- `forgejo.service` active/enabled;
+- OpenSSH active and listening on IPv4/IPv6 port 22;
+- `PubkeyAuthentication yes`;
+- `AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys2`;
+- `StrictModes yes`;
+- `PermitRootLogin no`;
+- dedicated `git` account exists with home `/var/lib/forgejo`;
+- `/var/lib/forgejo/.ssh` ownership and modes are correct;
+- `/var/lib/forgejo/.ssh/authorized_keys` exists as `git:git 0600`;
+- Forgejo SSH configuration points to `git.criandofacil.com.br:22` with built-in SSH disabled;
+- DNS resolves to the selected VPS;
+- authorized key count is currently zero, which is expected before first client enrollment.
+
+### C2 — next gate: enroll intended client key
+
+Add one explicitly intended **public** SSH key to the `jaasielsantos` Forgejo account. Never copy/import arbitrary VPS keys and never expose a private key.
+
+After enrollment, Forgejo should manage the corresponding entry in `/var/lib/forgejo/.ssh/authorized_keys`. Regenerate only if needed:
+
+```bash
+sudo -u git /usr/local/bin/forgejo admin regenerate keys \
+  --config /etc/forgejo/app.ini \
+  --work-path /var/lib/forgejo
 ```
 
-It validates HTTPS health, sshd effective settings, port 22, the `git` OS account, `.ssh` permissions, non-secret Forgejo SSH configuration, and an `authorized_keys` summary. It does not add keys or change sshd.
+Then test from the intended client:
+
+```bash
+ssh -T git@git.criandofacil.com.br
+```
+
+Stage C completes only after a real SSH clone and push succeed.
 
 ## Executable artifacts
 
@@ -119,7 +150,7 @@ Client SSH access must be granted only by adding an explicitly intended **public
 ```text
 [x] Stage A  local Forgejo bootstrap + health
 [x] Stage B  Nginx + DNS + TLS
-[ ] Stage C  Git SSH validation
+[~] Stage C  SSH preflight clean; key enrollment/auth/clone-push pending
 [ ] Stage D  Forgejo Runner + Podman
 [ ] Stage E  migrate devos-forge pilot
 [ ] Stage F  backup + restore rehearsal
@@ -128,10 +159,10 @@ Client SSH access must be granted only by adding an explicitly intended **public
 
 ## Immediate next action
 
-Run the read-only Stage C preflight on `criandofacil-vps`:
+On the intended client computer, identify or create one Ed25519 SSH keypair. Add only the `.pub` key to the `jaasielsantos` Forgejo account, then validate:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/stage-c-ssh-preflight.sh | sudo bash
+ssh -T git@git.criandofacil.com.br
 ```
 
-After that evidence is reviewed, add one intended client public SSH key to the `jaasielsantos` Forgejo account and validate `ssh -T git@git.criandofacil.com.br` before testing clone/push.
+Do not proceed to Forgejo Runner until SSH authentication and a real clone/push operation are confirmed.
