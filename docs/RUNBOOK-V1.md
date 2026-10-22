@@ -17,6 +17,7 @@ existing Nginx :80/:443
   v
 Forgejo v15 LTS
 (native binary + systemd)
+127.0.0.1:3000
   |
   +--> existing PostgreSQL 16 on loopback
   +--> system OpenSSH :22 for Git SSH
@@ -43,7 +44,7 @@ The selected host already provides Nginx, PostgreSQL 16, Certbot, Git, OpenSSH a
 
 Initial server line: **Forgejo 15 LTS**.
 
-The bootstrap currently pins `15.0.10`. Patch upgrades within the LTS line are deliberate maintenance operations; major upgrades require release-note review and backup verification.
+The bootstrap pins `15.0.10`. Patch upgrades within the LTS line are deliberate maintenance operations; major upgrades require release-note review and backup verification.
 
 ## Host paths
 
@@ -66,7 +67,7 @@ Git SSH:       existing OpenSSH :22
 PostgreSQL:    127.0.0.1:5432 / ::1:5432
 ```
 
-Candidate V1 hostname:
+V1 hostname:
 
 ```text
 git.criandofacil.com.br
@@ -83,7 +84,7 @@ database: forgejo
 role:     forgejo
 ```
 
-The database password is generated on the host during bootstrap and stored only in root/group-protected Forgejo configuration.
+The database password was generated on-host during bootstrap and is stored only in the protected Forgejo configuration.
 
 ## Authentication baseline
 
@@ -96,92 +97,103 @@ V1 is private/headless-first:
 - 2FA required for administrators;
 - API tokens generated later with the smallest scopes required by DevOS.
 
-## Stage A — local server bootstrap
+## Stage A — local server bootstrap — COMPLETE
 
-The repository contains:
+Stage A is healthy.
 
-```text
-scripts/bootstrap-server-v1.sh
-```
-
-The script is intentionally safe by default.
-
-### Preview
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/bootstrap-server-v1.sh \
-  | sudo bash
-```
-
-This performs guard checks and prints the plan without changing the host.
-
-### Apply
-
-Only after the preview is accepted:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/bootstrap-server-v1.sh \
-  | sudo bash -s -- --apply
-```
-
-### Stage A incident note — OAuth2 JWT secret
-
-The first Stage A apply reached systemd startup but Forgejo entered a restart loop because `oauth2.JWT_SECRET` was absent and Forgejo attempted to write it into `/etc/forgejo/app.ini`. The configuration is intentionally `root:git 0640`, so the service user cannot mutate that file.
-
-The durable fix is to pre-generate `JWT_SECRET` in the bootstrap and write it into `[oauth2]` before service startup. **Do not weaken the configuration-file permissions.**
-
-For the already-created partial installation, use the targeted repair script:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/repair-stage-a-oauth2-secret.sh \
-  | sudo bash
-```
-
-The repair script:
-
-- stops only `forgejo.service`;
-- generates `JWT_SECRET` locally with the Forgejo CLI;
-- appends `[oauth2]` only when that section is absent;
-- preserves `root:git 0640` on `app.ini`;
-- starts Forgejo again;
-- verifies `http://127.0.0.1:3000/api/healthz`;
-- refuses ambiguous existing `[oauth2]` state rather than guessing.
-
-### Stage A acceptance
-
-All must pass:
+Acceptance passed:
 
 ```text
 forgejo.service = active
 127.0.0.1:3000 = listening
 /api/healthz = healthy
 PostgreSQL connection = healthy
-initial admin exists
-Nginx configuration untouched
-existing GitHub runner untouched
+initial admin = created
+Nginx configuration = untouched by Stage A
+existing GitHub runner = untouched
 ```
 
-Useful checks:
+### Stage A incident / fix
 
-```bash
-sudo systemctl status forgejo --no-pager
-curl -fsS http://127.0.0.1:3000/api/healthz
-sudo ss -lntp | grep ':3000'
-```
+The first apply exposed a bootstrap defect: Forgejo required `oauth2.JWT_SECRET` and attempted to persist it into the intentionally root-owned config.
+
+Durable correction:
+
+- bootstrap pre-generates `JWT_SECRET`;
+- `[oauth2].JWT_SECRET` exists before first startup;
+- `/etc/forgejo/app.ini` remains `root:git 0640`;
+- the partial deployment was repaired through `scripts/repair-stage-a-oauth2-secret.sh`.
 
 Do **not** paste `/root/devos-forge-initial-admin.txt` into chat.
 
 ## Stage B — DNS + Nginx + TLS
 
-After Stage A passes:
+Stage B is split to keep certificate issuance separate from ingress configuration.
 
-1. create DNS records for `git.criandofacil.com.br` pointing to the selected VPS;
-2. add a dedicated Nginx vhost proxying only to `127.0.0.1:3000`;
-3. validate with `nginx -t`;
-4. issue/attach TLS through the existing Certbot workflow;
-5. verify HTTPS and API health externally.
+### Stage B1 — Nginx HTTP reverse proxy
 
-The Forgejo HTTP port must remain loopback-only.
+Repository script:
+
+```text
+scripts/stage-b-nginx.sh
+```
+
+Preview:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/stage-b-nginx.sh | sudo bash
+```
+
+Apply only after preview:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jaasielsantos/devos-forge/main/scripts/stage-b-nginx.sh | sudo bash -s -- --apply
+```
+
+The vhost follows Forgejo's documented Nginx proxy requirements:
+
+- `merge_slashes off`;
+- proxy to `http://127.0.0.1:3000`;
+- preserve Host / forwarded headers;
+- support connection upgrade;
+- `client_max_body_size 512M`.
+
+B1 does **not** touch DNS, TLS, firewall, sshd, or runners.
+
+### Stage B2 — DNS
+
+Create/verify DNS for:
+
+```text
+git.criandofacil.com.br
+```
+
+It must resolve to the selected VPS before Certbot is run.
+
+Host-side checks:
+
+```bash
+getent ahostsv4 git.criandofacil.com.br
+curl -I http://git.criandofacil.com.br/
+```
+
+### Stage B3 — TLS
+
+After DNS is correct and HTTP reaches the new vhost:
+
+```bash
+sudo certbot --nginx -d git.criandofacil.com.br --redirect
+```
+
+Then validate:
+
+```bash
+sudo nginx -t
+curl -fsS https://git.criandofacil.com.br/api/healthz
+sudo certbot certificates
+```
+
+Forgejo itself remains plain HTTP on loopback; Nginx terminates TLS.
 
 ## Stage C — Git SSH
 
@@ -274,14 +286,12 @@ At least one copy must leave the primary VPS. GitHub remains a transition mirror
 
 Until cutover is complete, GitHub remains available as the known-good source.
 
-If Stage A fails, do not modify Nginx/DNS. Inspect:
+If Forgejo fails, do not delete PostgreSQL or Forgejo data while diagnosing. Inspect:
 
 ```bash
 sudo journalctl -u forgejo -n 200 --no-pager
 sudo systemctl status forgejo --no-pager
 ```
-
-Do not delete PostgreSQL data or Forgejo data while diagnosing a failed start.
 
 ## Definition of V1 done
 
