@@ -126,10 +126,12 @@ SSH authentication -> SSH clone -> local commit -> SSH push
 
 The push completed successfully on `main` with commit `bcbfee5` (`test: validate Forgejo SSH push`). This proves the Git-over-SSH read/write path end to end.
 
-## Stage D — next gate: Forgejo Runner + rootless Podman
+## Stage D — Forgejo Runner + rootless Podman ACTIVE
 
 Next objectives:
 
+- verify the current host/Podman state read-only;
+- verify current official Forgejo Runner requirements and a compatible runner release;
 - install/register a dedicated Forgejo Runner;
 - use rootless Podman for job isolation;
 - keep runner capacity at 1 while the GitHub runner coexists;
@@ -167,4 +169,4 @@ Client SSH access is granted only through explicitly intended public keys stored
 
 ## Immediate next action
 
-Prepare Stage D with a read-only runner/Podman preflight, then install and register the runner only after the current host state and official Forgejo Runner requirements are verified.
+Run a Stage D read-only preflight for Podman, user namespaces, existing runners, available resources, and Forgejo Actions configuration. Only after that preflight passes should the dedicated Forgejo Runner be installed and registered.
