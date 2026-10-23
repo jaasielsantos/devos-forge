@@ -3,7 +3,7 @@
 ## Status
 
 **Phase:** 1 — Forgejo Runner validation  
-**Implementation:** Stage A, Stage B, and Stage C complete; Stage D preflight mostly clean, Podman recheck pending after deleted-CWD artifact  
+**Implementation:** Stage A, Stage B, and Stage C complete; Stage D preflight clean; dedicated runner host setup next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
@@ -130,7 +130,7 @@ The temporary VPS smoke key and local smoke credential material were removed aft
 
 ## Stage D — Forgejo Runner + rootless Podman ACTIVE
 
-### D1 — preflight MOSTLY COMPLETE
+### D1 — preflight COMPLETE
 
 Validated on `srv1805473`:
 
@@ -141,27 +141,35 @@ Validated on `srv1805473`:
 - root filesystem 48 GiB with roughly 32 GiB free;
 - very low host load during capture;
 - `git`, `curl`, `gpg`, `jq`, `podman`, `systemctl`, and `loginctl` are installed;
-- unprivileged user namespaces enabled;
+- Podman 4.9.3 is functional as an unprivileged user;
+- Podman reports `rootless=true`;
+- Podman uses cgroup v2 with the systemd cgroup manager;
+- user namespaces are enabled;
 - current administrative user has subordinate UID/GID ranges;
-- cgroup v2 active with CPU, memory, IO and pids controllers available;
-- Forgejo Actions enabled;
-- Forgejo service active/enabled and public health passing;
+- cgroup v2 exposes CPU, memory, IO and pids controllers;
+- Forgejo Actions is enabled;
+- Forgejo service is active/enabled and public health passes;
 - existing GitHub Actions runner remains active;
-- no conflicting public listeners introduced by Forgejo Runner work.
+- no conflicting public listeners were introduced.
 
-The Podman version/info commands in the first preflight did not execute because the shell's current working directory had been deleted after cleanup of the earlier `forgejo-tests` directory. The repeated `getcwd() failed: No such file or directory` message is a shell working-directory artifact, not evidence of a Podman failure.
+The first Podman check failed only because the shell's current working directory had been deleted during smoke cleanup. After returning to a valid directory, Podman passed normally.
 
-### D2 — locked direction after preflight
+### D2 — locked runner setup
 
-- create a dedicated Forgejo Runner OS account rather than reuse `jaasielpadilha`;
+- create a dedicated `forgejo-runner` OS account rather than reuse `jaasielpadilha`;
 - ensure that account receives its own subordinate UID/GID mappings;
-- run a user-scoped Podman socket for that account;
-- enable linger so the rootless Podman socket survives logout/reboot;
-- install a verified Forgejo Runner binary compatible with Forgejo 15 LTS;
+- lock password login for the service account;
+- enable linger for persistent user services;
+- run a rootless Podman socket for that account;
+- install and verify Forgejo Runner v13.1.0;
+- generate a version-matched `runner-config.yml`;
 - set runner capacity to 1 while the GitHub runner coexists;
 - use container execution through Podman only; do not introduce a generic `host` runner label;
-- register the first runner at the narrowest useful scope for the smoke repository;
+- initially register the runner at repository scope for `jaasielsantos/ssh-smoke`;
+- use the Forgejo 15 interactive registration flow (`URL + UUID + token`) rather than the deprecated `.runner` registration flow;
 - run a minimal Actions workflow before widening scope or migrating the pilot repository.
+
+A dedicated host-preparation script is available at `scripts/stage-d-runner-host-setup.sh`. It deliberately stops before inserting registration credentials or starting a runner daemon/service.
 
 ## Executable artifacts
 
@@ -172,6 +180,7 @@ The Podman version/info commands in the first preflight did not execute because 
 - `scripts/stage-b-nginx.sh`
 - `scripts/stage-c-ssh-preflight.sh`
 - `scripts/stage-d-runner-preflight.sh`
+- `scripts/stage-d-runner-host-setup.sh`
 - `docs/HOST-CRIANDOFACIL.md`
 - `docs/DEPLOYMENT.md`
 
@@ -181,7 +190,7 @@ The GitHub repository is public. Never commit runtime passwords, tokens, private
 
 Client SSH access is granted only through explicitly intended public keys stored in Forgejo. Temporary smoke credentials should be removed after their validation purpose is complete.
 
-Forgejo Actions jobs must remain containerized through rootless Podman. Do not configure a `host` label for the V1 runner.
+Forgejo Actions jobs must remain containerized through rootless Podman. Do not configure a `host` label for the V1 runner. Keep the initial runner registration at repository scope to minimize blast radius.
 
 ## Phase 1 sequence
 
@@ -189,7 +198,7 @@ Forgejo Actions jobs must remain containerized through rootless Podman. Do not c
 [x] Stage A  local Forgejo bootstrap + health
 [x] Stage B  Nginx + DNS + TLS
 [x] Stage C  Git SSH auth + clone/push proven
-[~] Stage D  preflight mostly clean; Podman recheck -> dedicated runner setup -> Actions smoke
+[~] Stage D  preflight complete -> dedicated runner host setup -> repo-scoped registration -> Actions smoke
 [ ] Stage E  migrate devos-forge pilot
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
@@ -197,12 +206,4 @@ Forgejo Actions jobs must remain containerized through rootless Podman. Do not c
 
 ## Immediate next action
 
-Reset the administrative shell to a valid working directory and rerun only the Podman checks:
-
-```bash
-cd ~
-podman --version
-podman info --format 'rootless={{.Host.Security.Rootless}} cgroupVersion={{.Host.CgroupsVersion}} cgroupManager={{.Host.CgroupManager}} graphRoot={{.Store.GraphRoot}} runRoot={{.Store.RunRoot}}'
-```
-
-If these pass, proceed to creation of the dedicated Forgejo Runner user and its rootless Podman socket.
+Run `scripts/stage-d-runner-host-setup.sh` first in dry-run mode and then with `--apply` after reviewing the plan. The script will prepare the dedicated service account, rootless Podman socket, verified Forgejo Runner v13.1.0 binary, and generated configuration file without registering or starting the runner.
