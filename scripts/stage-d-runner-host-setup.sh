@@ -11,14 +11,6 @@ RUNNER_BIN="/usr/local/bin/forgejo-runner"
 RUNNER_CONFIG="${RUNNER_HOME}/runner-config.yml"
 
 say() { printf '\n==> %s\n' "$*"; }
-run() {
-  if $APPLY; then
-    printf '+ '; printf '%q ' "$@"; printf '\n'
-    "$@"
-  else
-    printf '[dry-run] '; printf '%q ' "$@"; printf '\n'
-  fi
-}
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run with sudo: sudo bash $0 [--apply]" >&2
@@ -41,13 +33,15 @@ curl -fsS https://git.criandofacil.com.br/api/healthz >/dev/null || { echo "Forg
 
 say "Plan"
 cat <<EOF
-1. Install Forgejo Runner v${RUNNER_VERSION} from the official Forgejo release URL and verify its OpenPGP signature.
-2. Create a dedicated local account '${RUNNER_USER}' with its own home and user namespace mappings.
-3. Lock password login for '${RUNNER_USER}'.
-4. Enable lingering so the user's rootless Podman socket survives logout/reboot.
-5. Enable the rootless Podman user socket for '${RUNNER_USER}'.
-6. Generate a version-matched runner-config.yml if absent.
-7. Stop before Forgejo registration, server UUID/token insertion, runner service creation, or workflow execution.
+1. Ensure slirp4netns is installed for rootless Podman networking.
+2. Install Forgejo Runner v${RUNNER_VERSION} from the official Forgejo release URL and verify its OpenPGP signature.
+3. Create a dedicated local account '${RUNNER_USER}' with its own home and user namespace mappings.
+4. Lock password login for '${RUNNER_USER}'.
+5. Enable lingering so the user's rootless Podman socket survives logout/reboot.
+6. Enable the rootless Podman user socket for '${RUNNER_USER}'.
+7. Verify rootless Podman networking with a disposable container.
+8. Generate a version-matched runner-config.yml if absent.
+9. Stop before Forgejo registration, server UUID/token insertion, runner service creation, or workflow execution.
 
 NOT touched by this step:
 - Forgejo app.ini
@@ -60,6 +54,14 @@ NOT touched by this step:
 EOF
 
 $APPLY || { echo; echo "Dry-run complete. Re-run with --apply to execute."; exit 0; }
+
+say "Ensure rootless networking helper"
+if ! command -v slirp4netns >/dev/null 2>&1; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y slirp4netns
+fi
+command -v slirp4netns
+slirp4netns --version | head -n 1
 
 say "Download and verify Forgejo Runner"
 tmpdir="$(mktemp -d)"
@@ -96,7 +98,6 @@ echo "subgid=${subgid}"
 say "Enable linger and rootless Podman socket"
 loginctl enable-linger "$RUNNER_USER"
 runner_uid="$(id -u "$RUNNER_USER")"
-# Give systemd-logind a moment to materialize the per-user runtime directory.
 for _ in {1..20}; do
   [[ -d "/run/user/${runner_uid}" ]] && break
   sleep 0.25
@@ -114,6 +115,11 @@ done
 say "Verify Podman as dedicated user"
 sudo -u "$RUNNER_USER" env HOME="$RUNNER_HOME" XDG_RUNTIME_DIR="/run/user/${runner_uid}" \
   podman info --format 'rootless={{.Host.Security.Rootless}} cgroupVersion={{.Host.CgroupsVersion}} cgroupManager={{.Host.CgroupManager}} graphRoot={{.Store.GraphRoot}} runRoot={{.Store.RunRoot}}'
+
+say "Verify rootless Podman networking"
+sudo -u "$RUNNER_USER" env HOME="$RUNNER_HOME" XDG_RUNTIME_DIR="/run/user/${runner_uid}" \
+  podman run --rm docker.io/library/node:20-bookworm \
+  node -e 'console.log("ROOTLESS_NETNS=PASS")'
 
 say "Generate runner configuration"
 if [[ ! -s "$RUNNER_CONFIG" ]]; then
