@@ -1,0 +1,37 @@
+name: Forgejo Runner Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  smoke:
+    runs-on: docker
+    steps:
+      - name: Runtime identity
+        run: |
+          set -eu
+          echo "Forgejo Runner smoke: runtime identity"
+          node --version
+          uname -a
+          id
+
+      - name: Verify workflow cannot see container-engine sockets
+        run: |
+          set -eu
+          test ! -S /var/run/docker.sock
+          test ! -S /run/user/1002/podman/podman.sock
+          echo "PASS: no Docker/Podman socket exposed inside workflow container"
+
+      - name: Show cgroup resource envelope
+        run: |
+          set -eu
+          echo "memory.max=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable)"
+          echo "cpu.max=$(cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable)"
+          echo "pids.max=$(cat /sys/fs/cgroup/pids.max 2>/dev/null || echo unavailable)"
+
+      - name: Final smoke assertion
+        run: |
+          echo "FORGEJO_ACTIONS_SMOKE=PASS"
