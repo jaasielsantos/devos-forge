@@ -5,7 +5,7 @@
 **Phase:** 1 — Forgejo pilot proven through native branch creation; Control Plane implementation active  
 **Infrastructure:** Stages A-D complete  
 **Migration:** Stage E proven through `FORGEJO_NATIVE_BRANCH=PASS`; Forgejo PR/Actions/review/merge proof intentionally paused until Control Plane production cutover  
-**Control Plane:** Gates 0-4 complete; Gate 5 active  
+**Control Plane:** Gates 0-5 complete; Gate 6 active  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`  
 **Control Plane repository:** `devos-forge-control-plane`
@@ -138,8 +138,8 @@ Locked principles:
 [x] Gate 2  ForgeProvider contract
 [x] Gate 3  ForgejoProvider read path
 [x] Gate 4  ForgejoProvider write path
-[~] Gate 5  Control Plane core: policy / idempotency / evidence
-[ ] Gate 6  MCP adapter
+[x] Gate 5  Control Plane core: policy / idempotency / evidence
+[~] Gate 6  MCP adapter
 [ ] Gate 7  staging deployment
 [ ] Gate 8  MCP -> Forgejo end-to-end proof
 [ ] Gate 9  deployment control semantics
@@ -174,6 +174,40 @@ FORGEJO_PROVIDER_WRITE=PASS
 
 `workflow_dispatch` currently returns deterministic `NOT_FOUND` on the repository/instance Actions API surface and remains an unavailable optional capability rather than a generic write-path failure.
 
+## Gate 5 completion
+
+The client-agnostic execution core is implemented and proven with durable PostgreSQL replay semantics:
+
+```text
+implementation_pr=13
+implementation_merge=e14c9e8089e553b3767d2df2d224f4fc433946b4
+self_hosted_runner=devos-cp-vps-01
+self_hosted_ci_run=39930231511
+self_hosted_ci_job=120336474018
+unit_tests=41/41 PASS
+policy_default_deny=PASS
+caller_risk_downgrade=DENIED
+break_glass_default=DENIED
+capability_pre_mutation_check=PASS
+idempotent_success_replay=PASS
+operation_id_conflict=PASS
+retryable_reclaim=PASS
+final_failure_no_reexecute=PASS
+evidence_append_only=PASS
+postgres_migration=PASS
+postgres_first_execution=PASS
+postgres_cluster_restart=PASS
+postgres_restart_replay=PASS
+postgres_operation_conflict=PASS
+postgres_retry_history=PASS
+postgres_concurrent_claim=PASS
+postgres_null_result_replay=PASS
+POSTGRES_OPERATION_LEDGER=PASS
+CONTROL_PLANE_CORE=PASS
+```
+
+The PostgreSQL durability smoke uses an isolated PostgreSQL 16 cluster owned by the self-hosted runner on a high test port. It does not use or mutate the Forgejo PostgreSQL database on port 5432.
+
 Canonical Control Plane evidence lives in:
 
 ```text
@@ -181,40 +215,38 @@ devos-forge-control-plane/docs/evidence/GATE-1-BOOTSTRAP.md
 devos-forge-control-plane/docs/evidence/GATE-2-FORGE-PROVIDER.md
 devos-forge-control-plane/docs/evidence/GATE-3-FORGEJO-READ.md
 devos-forge-control-plane/docs/evidence/GATE-4-FORGEJO-WRITE.md
+devos-forge-control-plane/docs/evidence/GATE-5-CONTROL-PLANE-CORE.md
 ```
 
-## Active Gate 5
+## Active Gate 6
 
-Gate 5 builds the client-agnostic execution core above `ForgeProvider` and below MCP.
+Gate 6 introduces the MCP adapter above the now-proven Control Plane core.
 
-Required core semantics:
+Required adapter semantics:
 
 ```text
-policy engine
-READ / WRITE / RELEASE / PRODUCTION / BREAK_GLASS
-operation ledger keyed by operation_id
-NEW / IN_PROGRESS / SUCCEEDED / FAILED_RETRYABLE / FAILED_FINAL
-request fingerprinting
-replay conflict detection
-structured evidence
-audit-safe metadata
-capability + policy authorization
+MCP server transport
+semantic MCP tool registry
+schema validation at adapter boundary
+authenticated actor/context mapping
+Control Plane executor invocation
+stable error/result mapping
+capability-aware tool exposure
 ```
 
-Replay rules:
+Boundaries remain locked:
 
-- identical successful replay returns prior result/evidence without a second provider mutation;
-- replay while IN_PROGRESS never starts a duplicate mutation;
-- same `operation_id` with a materially different request fails deterministically;
-- FAILED_RETRYABLE may be retried under explicit rules;
-- FAILED_FINAL must not rerun implicitly;
-- policy denial occurs before provider mutation;
-- no evidence record may contain secrets.
+- MCP stays an adapter and does not own policy/idempotency/evidence logic;
+- no raw Forgejo API passthrough;
+- no arbitrary shell/SSH tool;
+- material writes must route through the Gate 5 executor and carry `operation_id`;
+- unavailable capabilities remain deterministic and machine-readable;
+- adapter validation happens locally before staging deployment.
 
 Next exit evidence:
 
 ```text
-CONTROL_PLANE_CORE=PASS
+MCP_ADAPTER=PASS
 ```
 
 ## Security / credential lifecycle
@@ -227,4 +259,4 @@ CONTROL_PLANE_CORE=PASS
 
 ## Immediate next action
 
-Implement Gate 5 in `jaasielsantos/devos-forge-control-plane` under Issue #12: policy engine, durable operation ledger, replay-safe idempotency, evidence model and tests before any MCP adapter work begins.
+Implement Gate 6 in `jaasielsantos/devos-forge-control-plane`: semantic MCP tools and adapter transport over the proven Gate 5 execution core, before staging deployment work begins.
