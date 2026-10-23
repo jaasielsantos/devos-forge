@@ -19,7 +19,7 @@ cmd df -h /
 cmd uptime
 
 section "REQUIRED TOOLS"
-for tool in git curl gpg jq podman systemctl loginctl; do
+for tool in git curl gpg jq podman slirp4netns systemctl loginctl; do
   if command -v "$tool" >/dev/null 2>&1; then
     printf '%-12s %s\n' "$tool" "$(command -v "$tool")"
   else
@@ -34,6 +34,13 @@ if command -v podman >/dev/null 2>&1; then
   cmd podman system connection list
 else
   echo "podman: MISSING"
+fi
+
+section "ROOTLESS NETWORKING"
+if command -v slirp4netns >/dev/null 2>&1; then
+  cmd slirp4netns --version
+else
+  echo "slirp4netns: MISSING"
 fi
 
 section "USER NAMESPACES"
