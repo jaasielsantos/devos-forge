@@ -2,10 +2,10 @@
 
 ## Status
 
-**Phase:** 1 — Forgejo pilot proven; Control Plane staging live; Gate 8 E2E active  
+**Phase:** 1 — Forgejo pilot proven; Control Plane staging live; Gate 9 active  
 **Infrastructure:** Stages A-D complete  
 **Migration:** Stage E proven through Forgejo-native branch; PR/Actions/review/merge proof remains intentionally paused until Control Plane production cutover  
-**Control Plane:** Gates 0-7 complete; Gate 8 active in `devos-forge-control-plane` Issue #23  
+**Control Plane:** Gates 0-8 complete; Gate 9 active in `devos-forge-control-plane` Issue #26  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`  
 **Control Plane repository:** `devos-forge-control-plane`
@@ -106,15 +106,15 @@ Remaining Stage E lifecycle proof resumes after the Control Plane production/cut
 [x] Gate 5  Control Plane core: policy / idempotency / evidence
 [x] Gate 6  MCP adapter
 [x] Gate 7  staging deployment
-[~] Gate 8  MCP -> Forgejo end-to-end proof
-[ ] Gate 9  deployment control semantics
+[x] Gate 8  MCP -> Forgejo end-to-end proof
+[~] Gate 9  deployment control semantics
 [ ] Gate 10 production Control Plane
 [ ] Gate 11 Forgejo source-of-truth cutover / GitHub bootstrap retirement
 ```
 
 Canonical implementation/evidence lives in `jaasielsantos/devos-forge-control-plane`.
 
-## Gates 1-6 completion summary
+## Gates 1-7 completion summary
 
 ```text
 Gate 1: SELF_HOSTED_CI=PASS / CONTROL_PLANE_REPO_BOOTSTRAP=PASS
@@ -123,11 +123,12 @@ Gate 3: FORGEJO_PROVIDER_READ=PASS
 Gate 4: FORGEJO_PROVIDER_WRITE=PASS
 Gate 5: POSTGRES_OPERATION_LEDGER=PASS / CONTROL_PLANE_CORE=PASS
 Gate 6: MCP_ADAPTER=PASS
+Gate 7: STAGING_HOST_BOOTSTRAP=PASS / MCP_STAGING_DEPLOY=PASS
 ```
 
-Gate 4 mutation proof used dedicated Forgejo scratch repositories only. Gate 5 durability used an isolated runner-owned PostgreSQL test cluster, not Forgejo's database. Gate 6 preserved capability-aware semantic tools, server-owned actor/risk semantics, default-denied BREAK_GLASS, and no generic escape hatch.
+Gate 4 mutation proof used dedicated Forgejo scratch targets only. Gate 5 durability used an isolated runner-owned PostgreSQL test cluster, not Forgejo's database. Gate 6 preserved capability-aware semantic tools, server-owned actor/risk semantics, default-denied BREAK_GLASS and no generic escape hatch. Gate 7 established the public staging endpoint with a non-root runtime and constrained root-owned deploy helper.
 
-Canonical evidence:
+Canonical evidence through Gate 7:
 
 ```text
 devos-forge-control-plane/docs/evidence/GATE-1-BOOTSTRAP.md
@@ -136,106 +137,102 @@ devos-forge-control-plane/docs/evidence/GATE-3-FORGEJO-READ.md
 devos-forge-control-plane/docs/evidence/GATE-4-FORGEJO-WRITE.md
 devos-forge-control-plane/docs/evidence/GATE-5-CONTROL-PLANE-CORE.md
 devos-forge-control-plane/docs/evidence/GATE-6-MCP-ADAPTER.md
+devos-forge-control-plane/docs/evidence/GATE-7-STAGING.md
 ```
 
-## Gate 7 — COMPLETE
+## Gate 8 — COMPLETE
 
-Public staging is live at:
+Canonical tracking: `devos-forge-control-plane` Issue **#23**, closed completed.
+
+Accepted release and E2E run:
 
 ```text
-https://mcp-git-staging.criandofacil.com.br
+release_sha=c167a46518737165463655db82997ad52ddc569a
+release_sha256=37d1400f039e202a5c52959731303a07cd4fffdfc0676274918aceaa99631820
+workflow=gate8-control-plane-command
+run=39978675219
+job=120499913136
+conclusion=success
 ```
 
-Runtime topology:
+Gate 8 proved the real path:
 
 ```text
-Internet
-  -> Nginx :443 / TLS
-  -> 127.0.0.1:3187
-  -> devos-cp-staging (non-root systemd service)
-  -> devos_cp_staging PostgreSQL database
-  -> staging-scoped Forgejo credential
-```
-
-Gate 7 package and closeout:
-
-```text
-issue_17=CLOSED_COMPLETED
-implementation_pr_21=MERGED
-chatops_pr_22=MERGED
-closeout_pr_24=MERGED
-control_plane_gate7_closeout_merge=6d4eead87f157d06d42f7664445fa4c11f5e491e
-```
-
-Accepted staging release:
-
-```text
-staging_release_sha=cd462cb2bc1f275eee7d8d6fce3b8f6f061dc82e
-staging_release_sha256=0e0a9cf461df212f1022522e79439db63e7f86e8cbcb516b9f45196b76a74a10
-staging_deploy_run=39974466817
-staging_deploy_job=120485353669
-```
-
-Host and deployment acceptance:
-
-```text
-STAGING_HOST_BOOTSTRAP=PASS
-staging_dns=RESOLVES
-staging_dns_ipv4=187.77.39.14
-STAGING_COMMAND_SHA_PIN=PASS
-STAGING_ARTIFACT_BUILD=PASS
-staging_migration=PASS
-staging_local_health=PASS
-staging_local_readiness=PASS
-staging_local_authenticated_mcp=PASS
-staging_public_tls_health=PASS
-MCP_STAGING_DEPLOY=PASS
-GATE_7=COMPLETE
-```
-
-Public health returned:
-
-```json
-{"ok":true,"status":"alive"}
-```
-
-Normal staging deploy no longer requires an interactive root session. The self-hosted runner remains without generic sudo and crosses the privilege boundary only through the constrained root-owned helper:
-
-```text
-/usr/local/sbin/devos-cp-staging-deploy
-```
-
-A trusted ChatOps command slot on Control Plane Issue #17 now lets the approved GitHub integration trigger a SHA-pinned staging deployment without manual Actions clicks. The slot is neutral (`IDLE`) when not in use.
-
-Detailed evidence: `devos-forge-control-plane/docs/evidence/GATE-7-STAGING.md`.
-
-## Active Gate 8 — MCP -> Forgejo E2E
-
-Canonical tracking: `devos-forge-control-plane` Issue **#23**.
-
-Objective:
-
-```text
-ChatGPT / MCP client
+ChatGPT / trusted command
   -> public staging MCP endpoint
-  -> semantic MCP tool
+  -> semantic MCP tools
   -> Control Plane policy / idempotency / evidence
   -> ForgejoProvider
-  -> Forgejo
+  -> Forgejo pilot repository
 ```
 
-Gate 8 must prove, against an explicit non-production/reversible mutation target:
+Bounded mutation proof:
 
 ```text
+target=jaasielsantos/devos-forge
+observed_main_sha=34b872a85cf01cda5d8c59b019bf1756c097bde0
+write_commit=a1b6feae28399a180877a125b3a6c9e0fcba4e53
+cleanup=PASS
+```
+
+Exit evidence:
+
+```text
+GATE_8_COMMAND_SHA_PIN=PASS
 MCP_PUBLIC_AUTHENTICATED_DISCOVERY=PASS
 MCP_FORGEJO_READ_E2E=PASS
 MCP_FORGEJO_WRITE_E2E=PASS
 MCP_OPERATION_REPLAY=PASS
+gate8_ledger_branch_create=PASS
+gate8_ledger_file_write=PASS
+gate8_ledger_branch_delete=PASS
 MCP_EVIDENCE_LINEAGE=PASS
+FORGEJO_DIRECT_CLEANUP=PASS
+GATE_8_E2E=PASS
 GATE_8=COMPLETE
 ```
 
-Production deployment semantics remain deferred to Gates 9-10.
+The temporary Gate 8 branch was deleted through semantic MCP and independently verified absent in Forgejo. The same `file_write` operation was replayed with the same `operation_id` without a second provider mutation. No production mutation was introduced.
+
+Closeout:
+
+```text
+implementation_pr_25=MERGED
+closeout_pr_27=MERGED
+control_plane_gate8_closeout_merge=1945cac0da2df29b50c8767a13a7c04feff4e60e
+issue_23=CLOSED_COMPLETED
+```
+
+Detailed evidence: `devos-forge-control-plane/docs/evidence/GATE-8-MCP-FORGEJO-E2E.md`.
+
+## Active Gate 9 — typed deployment control semantics
+
+Canonical tracking: `devos-forge-control-plane` Issue **#26**.
+
+Objective:
+
+```text
+proven public MCP path
+  -> typed deployment operations
+  -> immutable build-once artifact identity
+  -> staging deployment semantics
+  -> same-artifact promotion model
+  -> idempotent ledger/evidence
+```
+
+Required exit evidence:
+
+```text
+DEPLOYMENT_SEMANTICS_TYPED=PASS
+BUILD_ONCE_ARTIFACT_IDENTITY=PASS
+STAGING_DEPLOYMENT_OPERATION=PASS
+SAME_ARTIFACT_PROMOTION_MODEL=PASS
+DEPLOYMENT_IDEMPOTENCY=PASS
+DEPLOYMENT_EVIDENCE_LINEAGE=PASS
+GATE_9=COMPLETE
+```
+
+Production mutation remains deferred to Gate 10.
 
 ## Security / credential lifecycle
 
@@ -251,4 +248,4 @@ Production deployment semantics remain deferred to Gates 9-10.
 
 ## Immediate next action
 
-Execute Gate 8 through the real public staging MCP endpoint, proving authenticated discovery, semantic Forgejo read, one bounded reversible write, idempotent replay, and evidence lineage. No further manual VPS/Termux bootstrap action is required for normal staging operations.
+Implement Gate 9 deployment-control semantics in the Control Plane, preserving build-once artifact identity, typed operations, exact preconditions, idempotency and evidence. No further manual VPS/Termux action is required for the completed Gate 8 proof.
