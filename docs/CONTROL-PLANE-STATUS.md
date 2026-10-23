@@ -8,119 +8,117 @@ CONTROL_PLANE_REPO_BOOTSTRAP=PASS
 FORGE_PROVIDER_CONTRACT=PASS
 FORGEJO_PROVIDER_READ=PASS
 FORGEJO_PROVIDER_WRITE=PASS
+CONTROL_PLANE_CORE=PASS
+MCP_ADAPTER=PASS
+MCP_STAGING_DEPLOY=PASS
+GATE_8_E2E=PASS
+GATE_9_E2E=PASS
 BOOTSTRAP_PRIMARY=GITHUB
 FORGEJO_ROLE=PULL_MIRROR_UNTIL_CUTOVER
 SELF_HOSTED_CI=PASS
-ACTIVE_GATE=5_CONTROL_PLANE_CORE
+ACTIVE_GATE=10_PRODUCTION
+ACTIVE_ISSUE=devos-forge-control-plane#29
 PRODUCTION_ENDPOINT=mcp-git.criandofacil.com.br
 STAGING_ENDPOINT=mcp-git-staging.criandofacil.com.br
 ROOT_MCP_ENDPOINT=mcp.criandofacil.com.br (reserved)
 ```
 
-## Completed
-
-- Control Plane architecture accepted;
-- standalone `jaasielsantos/devos-forge-control-plane` repository bootstrapped;
-- dedicated self-hosted runner `devos-cp-vps-01` qualified on `srv1805473`;
-- private GitHub -> Forgejo pull mirror configured;
-- ForgeProvider contract completed before Forgejo/MCP implementation;
-- Forgejo read adapter completed and authenticated against the real Forgejo instance;
-- Forgejo write adapter completed and authenticated against dedicated scratch repositories;
-- optimistic branch/blob preconditions verified;
-- repository/file/branch/issue/release/PR mutations proven end to end;
-- repeated Gate 4 scratch validation is replay-safe;
-- no MCP-specific types are present in the provider layer.
-
-## Gate 1 evidence
+## Completed gates
 
 ```text
-SELF_HOSTED_CI=PASS
-CONTROL_PLANE_MIRROR=PASS
-CONTROL_PLANE_REPO_BOOTSTRAP=PASS
+[x] Gate 0  architecture freeze
+[x] Gate 1  bootstrap repository + mirror + self-hosted CI
+[x] Gate 2  ForgeProvider contract
+[x] Gate 3  ForgejoProvider read
+[x] Gate 4  ForgejoProvider write
+[x] Gate 5  policy / idempotency / durable evidence
+[x] Gate 6  semantic MCP adapter
+[x] Gate 7  public staging deployment
+[x] Gate 8  public MCP -> Forgejo E2E
+[x] Gate 9  typed deployment control semantics
+[~] Gate 10 production
+[ ] Gate 11 Forgejo source-of-truth cutover
 ```
 
-Canonical evidence: `devos-forge-control-plane/docs/evidence/GATE-1-BOOTSTRAP.md`.
+Canonical implementation and evidence are maintained in `jaasielsantos/devos-forge-control-plane`.
 
-## Gate 2 evidence
+## Gate 8 proof
 
 ```text
-implementation_pr=5
-implementation_commit=0906a554f99d75be22886aa250d54f29c533582d
-FORGE_PROVIDER_CONTRACT=PASS
+release_sha=c167a46518737165463655db82997ad52ddc569a
+workflow_run=39978675219
+workflow_job=120499913136
+MCP_PUBLIC_AUTHENTICATED_DISCOVERY=PASS
+MCP_FORGEJO_READ_E2E=PASS
+MCP_FORGEJO_WRITE_E2E=PASS
+MCP_OPERATION_REPLAY=PASS
+MCP_EVIDENCE_LINEAGE=PASS
+FORGEJO_DIRECT_CLEANUP=PASS
+GATE_8=COMPLETE
 ```
 
-Canonical evidence: `devos-forge-control-plane/docs/evidence/GATE-2-FORGE-PROVIDER.md`.
-
-## Gate 3 evidence
+## Gate 9 proof
 
 ```text
-implementation_pr=8
-implementation_merge=54d842245e87b436ce7a88f0a5213eed350def9b
-self_hosted_ci_run=39912468413
-self_hosted_ci_job=120278361017
-unit_tests=14/14 PASS
-FORGEJO_PROVIDER_READ_AUTHENTICATED_SMOKE=PASS
-FORGEJO_PROVIDER_READ=PASS
+implementation_pr=28
+implementation_merge=ea7bf22900b1c12b5b13964d96ef19fb9a4b8380
+staging_release_sha=ea7bf22900b1c12b5b13964d96ef19fb9a4b8380
+staging_release_sha256=3f44573b695718d1574d067c869806b2568a7ce27012e2c24ab126955c4bc23b
+workflow_run=39989576496
+workflow_job=120537536119
+artifact_digest=sha256:2deda67b9c59ae72c89cc830e5531614cd2f1d7776ab80bf642c8e17380c89a3
+unit_tests=63/63 PASS
+DEPLOYMENT_SEMANTICS_TYPED=PASS
+BUILD_ONCE_ARTIFACT_IDENTITY=PASS
+STAGING_DEPLOYMENT_OPERATION=PASS
+DEPLOYMENT_IDEMPOTENCY=PASS
+SAME_ARTIFACT_PROMOTION_MODEL=PASS
+DEPLOYMENT_EVIDENCE_LINEAGE=PASS
+production_mutation=DISABLED
+GATE_9=COMPLETE
 ```
 
-Canonical evidence: `devos-forge-control-plane/docs/evidence/GATE-3-FORGEJO-READ.md`.
+Gate 9 established deployment as a semantic Control Plane operation rather than a workflow/shell passthrough. Artifact identity is bound to exact source SHA + digest. Promotion eligibility requires the exact healthy staging artifact; rebuild/digest drift is rejected.
 
-## Gate 4 evidence
+## Active Gate 10 — production
+
+Gate 10 must create a **separate production boundary** before any production mutation is allowed.
+
+Required properties:
 
 ```text
-implementation_pr=10
-implementation_merge=867df13fa27bfbc31f78a02fdafe8d9391787183
-closeout_pr=11
-closeout_merge=79259c86037535a8d18ba5e6a57eccaf99840953
-self_hosted_ci_run=39913913446
-self_hosted_ci_job=120306893061
-replay_ci_run=39921763694
-replay_ci_job=120308419920
-unit_tests=23/23 PASS
-repository_create=PASS
-file_write_delete=PASS
-branch_create_delete=PASS
-issue_create_update_comment=PASS
-release_create=PASS
-pull_request_create_review_merge=PASS
-FORGEJO_PROVIDER_WRITE_AUTHENTICATED_SMOKE=PASS
-replay_safe_scratch=PASS
-FORGEJO_PROVIDER_WRITE=PASS
+separate production service identity
+separate production PostgreSQL state
+separate production Forgejo credential
+separate production MCP bearer / policy identity
+loopback-only application bind
+Nginx/TLS at mcp-git.criandofacil.com.br
+explicit PRODUCTION risk grant only on the production path
+same artifact already proven in staging
+operation_id + exact preconditions + append-only evidence
+BREAK_GLASS remains denied
 ```
 
-`workflow_dispatch` is currently unavailable on the repository/instance Actions API surface and is normalized as an optional `NOT_FOUND` capability, not a write-path failure.
-
-Canonical evidence: `devos-forge-control-plane/docs/evidence/GATE-4-FORGEJO-WRITE.md`.
-
-## Current gate
-
-**Gate 5 — Control Plane core: policy / idempotency / evidence**
-
-Required components:
+Exit evidence:
 
 ```text
-policy engine
-READ / WRITE / RELEASE / PRODUCTION / BREAK_GLASS classes
-operation ledger keyed by operation_id
-NEW / IN_PROGRESS / SUCCEEDED / FAILED_RETRYABLE / FAILED_FINAL
-request fingerprint / replay conflict detection
-structured mutation evidence
-audit-safe metadata
-capability + policy authorization boundary
+PRODUCTION_BOUNDARY_SEPARATE=PASS
+PRODUCTION_TLS_HEALTH=PASS
+PRODUCTION_ACTOR_POLICY=PASS
+SAME_ARTIFACT_PROMOTED=PASS
+PRODUCTION_DEPLOYMENT_OPERATION=PASS
+PRODUCTION_EVIDENCE_LINEAGE=PASS
+BREAK_GLASS=DENIED
+GATE_10=COMPLETE
 ```
 
-Required behavior:
+## Security boundary
 
-- policy denial before provider mutation;
-- identical successful replay returns prior result without duplicate mutation;
-- in-progress replay never starts a second mutation;
-- same operation ID with a materially different request fails deterministically;
-- retryable/final failure states remain explicit;
-- BREAK_GLASS is modeled but not exposed through MCP V1;
-- evidence never contains secret values.
-
-## Next exit evidence
-
-```text
-CONTROL_PLANE_CORE=PASS
-```
+- no raw Forgejo API passthrough;
+- no arbitrary shell or SSH MCP tool;
+- risk classification remains server-owned;
+- staging actor grants are `READ,WRITE,RELEASE` only;
+- `PRODUCTION` is not granted to staging;
+- `BREAK_GLASS` stays default-denied and absent from MCP V1;
+- GitHub remains temporary bootstrap primary until Gate 11;
+- production deployment must not rebuild the Gate 9 artifact.
