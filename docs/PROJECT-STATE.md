@@ -2,38 +2,45 @@
 
 ## Status
 
-**Phase:** 1 — Forgejo pilot proven; Control Plane staging live; Gate 10 active  
+**Phase:** 1 — Forgejo pilot proven; production Control Plane live; Gate 11 active  
 **Infrastructure:** Stages A-D complete  
-**Migration:** Stage E proven through Forgejo-native branch; PR/Actions/review/merge proof remains intentionally paused until Control Plane production cutover  
-**Control Plane:** Gates 0-9 complete; Gate 10 active in `devos-forge-control-plane` Issue #29  
+**Migration:** Stage E branch proof complete; remaining PR/Actions/review/merge lifecycle resumes in Gate 11  
+**Control Plane:** Gates 0-10 complete; Gate 11 active in `devos-forge-control-plane` Issue #32  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`  
 **Control Plane repository:** `devos-forge-control-plane`
 
 ## Current objective
 
-Build and prove the **DevOS Forge MCP / ChatGPT Control Plane** so ChatGPT and DevOS can operate Forgejo directly without depending operationally on the GitHub connector.
+Complete the **Forgejo source-of-truth cutover** now that the DevOS Forge MCP / ChatGPT Control Plane is proven in production.
 
-Current bootstrap path:
+Current pre-cutover path:
 
 ```text
 ChatGPT
   -> GitHub connector
-  -> GitHub temporary primary
+  -> GitHub temporary writable bootstrap primary
   -> Forgejo pull mirror
 ```
 
-Target path:
+Proven production path:
 
 ```text
 ChatGPT / DevOS / future clients
-  -> MCP
+  -> production MCP
   -> DevOS Forge Control Plane
        auth / policy / idempotency / ledger / evidence
   -> ForgeProvider
   -> ForgejoProvider
-  -> Forgejo primary
-  -> GitHub secondary / optional
+  -> Forgejo
+```
+
+Gate 11 target authority model:
+
+```text
+Forgejo = authoritative writable primary
+production MCP / Control Plane = primary operational path
+GitHub = explicit secondary role only (to be frozen during cutover)
 ```
 
 Accepted endpoints:
@@ -66,12 +73,12 @@ Git-over-SSH uses OpenSSH port 22 with the dedicated `git` account.
 [x] Stage B  Nginx + DNS + TLS
 [x] Stage C  Git SSH auth + clone/commit/push
 [x] Stage D  Forgejo Runner + rootless Podman + Actions smoke
-[~] Stage E  Forgejo-native branch proven; PR/Actions/review/merge intentionally paused
+[~] Stage E  Forgejo-native branch proven; PR/Actions/review/merge lifecycle remains
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
 ```
 
-Stage E proof already recorded:
+Existing Stage E proof:
 
 ```text
 forgejo_branch=eaddbb259fc710cafbecefa658912e8f9047752f
@@ -79,7 +86,7 @@ github_branch=ABSENT
 FORGEJO_NATIVE_BRANCH=PASS
 ```
 
-Remaining Stage E lifecycle proof resumes after the Control Plane production/cutover path is ready.
+The remaining Stage E lifecycle proof is now part of Gate 11 rather than blocked on Control Plane production.
 
 ## Control Plane principles
 
@@ -93,7 +100,8 @@ Remaining Stage E lifecycle proof resumes after the Control Plane production/cut
 - writes use explicit preconditions and optimistic concurrency;
 - material operations use `operation_id`, durable PostgreSQL state and append-only evidence;
 - staging and production keep separate service/state/credential boundaries;
-- production must promote the exact artifact proven in staging.
+- production promotes the exact artifact proven in staging;
+- Gate 11 must not create dual-primary write authority.
 
 ## Control Plane implementation map
 
@@ -108,13 +116,13 @@ Remaining Stage E lifecycle proof resumes after the Control Plane production/cut
 [x] Gate 7  staging deployment
 [x] Gate 8  MCP -> Forgejo end-to-end proof
 [x] Gate 9  deployment control semantics
-[~] Gate 10 production Control Plane
-[ ] Gate 11 Forgejo source-of-truth cutover / GitHub bootstrap retirement
+[x] Gate 10 production Control Plane
+[~] Gate 11 Forgejo source-of-truth cutover / GitHub bootstrap retirement
 ```
 
 Canonical implementation/evidence lives in `jaasielsantos/devos-forge-control-plane`.
 
-## Gates 1-7 completion summary
+## Gates 1-9 summary
 
 ```text
 Gate 1: SELF_HOSTED_CI=PASS / CONTROL_PLANE_REPO_BOOTSTRAP=PASS
@@ -124,11 +132,11 @@ Gate 4: FORGEJO_PROVIDER_WRITE=PASS
 Gate 5: POSTGRES_OPERATION_LEDGER=PASS / CONTROL_PLANE_CORE=PASS
 Gate 6: MCP_ADAPTER=PASS
 Gate 7: STAGING_HOST_BOOTSTRAP=PASS / MCP_STAGING_DEPLOY=PASS
+Gate 8: GATE_8_E2E=PASS
+Gate 9: GATE_9_E2E=PASS / GATE_9=COMPLETE
 ```
 
-Gate 4 mutation proof used dedicated Forgejo scratch targets only. Gate 5 durability used an isolated runner-owned PostgreSQL test cluster, not Forgejo's database. Gate 6 preserved capability-aware semantic tools, server-owned actor/risk semantics, default-denied BREAK_GLASS and no generic escape hatch. Gate 7 established the public staging endpoint with a non-root runtime and constrained root-owned deploy helper.
-
-Canonical evidence through Gate 9:
+Canonical evidence through Gate 10:
 
 ```text
 devos-forge-control-plane/docs/evidence/GATE-1-BOOTSTRAP.md
@@ -140,53 +148,23 @@ devos-forge-control-plane/docs/evidence/GATE-6-MCP-ADAPTER.md
 devos-forge-control-plane/docs/evidence/GATE-7-STAGING.md
 devos-forge-control-plane/docs/evidence/GATE-8-MCP-FORGEJO-E2E.md
 devos-forge-control-plane/docs/evidence/GATE-9-DEPLOYMENT-CONTROL.md
+devos-forge-control-plane/docs/evidence/GATE-10-PRODUCTION.md
 ```
 
 ## Gate 8 — COMPLETE
 
-Canonical tracking: `devos-forge-control-plane` Issue **#23**, closed completed.
-
-Accepted release and E2E run:
-
 ```text
 release_sha=c167a46518737165463655db82997ad52ddc569a
-release_sha256=37d1400f039e202a5c52959731303a07cd4fffdfc0676274918aceaa99631820
-workflow=gate8-control-plane-command
 run=39978675219
 job=120499913136
-conclusion=success
-```
-
-Gate 8 proved the real public MCP -> Control Plane -> Forgejo path with bounded WRITE, idempotent replay, evidence and cleanup.
-
-```text
 GATE_8_E2E=PASS
 GATE_8=COMPLETE
 ```
 
-Detailed evidence: `devos-forge-control-plane/docs/evidence/GATE-8-MCP-FORGEJO-E2E.md`.
-
 ## Gate 9 — COMPLETE
 
-Canonical tracking: `devos-forge-control-plane` Issue **#26**, closed completed.
-
-Accepted implementation and release:
-
 ```text
-implementation_pr=28
 implementation_merge=ea7bf22900b1c12b5b13964d96ef19fb9a4b8380
-release_sha=ea7bf22900b1c12b5b13964d96ef19fb9a4b8380
-release_sha256=3f44573b695718d1574d067c869806b2568a7ce27012e2c24ab126955c4bc23b
-unit_tests=63/63 PASS
-```
-
-Accepted public deployment-semantics proof:
-
-```text
-workflow=gate9-control-plane-command
-run=39989576496
-job=120537536119
-target=gate9-smoke
 artifact_digest=sha256:2deda67b9c59ae72c89cc830e5531614cd2f1d7776ab80bf642c8e17380c89a3
 DEPLOYMENT_SEMANTICS_TYPED=PASS
 BUILD_ONCE_ARTIFACT_IDENTITY=PASS
@@ -194,33 +172,38 @@ STAGING_DEPLOYMENT_OPERATION=PASS
 DEPLOYMENT_IDEMPOTENCY=PASS
 SAME_ARTIFACT_PROMOTION_MODEL=PASS
 DEPLOYMENT_EVIDENCE_LINEAGE=PASS
-production_mutation=DISABLED
-GATE_9_E2E=PASS
 GATE_9=COMPLETE
 ```
 
-The staging actor now has `READ,WRITE,RELEASE` only. `PRODUCTION` and `BREAK_GLASS` remain ungranted. Promotion requires the exact source SHA + artifact digest already proven healthy in staging; a rebuild is a different artifact and is rejected.
+## Gate 10 — COMPLETE
 
-Detailed evidence: `devos-forge-control-plane/docs/evidence/GATE-9-DEPLOYMENT-CONTROL.md`.
+Canonical tracking: `devos-forge-control-plane` Issue **#29**, closed completed. Implementation PR **#31**; closeout PR **#33**.
 
-## Active Gate 10 — production MCP/control-plane deployment
-
-Canonical tracking: `devos-forge-control-plane` Issue **#29**.
-
-Objective:
+Production release:
 
 ```text
-Gate 9 staging-proven artifact identity
-  -> separate production service/state/credentials
-  -> mcp-git.criandofacil.com.br TLS ingress
-  -> explicit PRODUCTION actor/policy boundary
-  -> promote exact staging artifact
-  -> production health/readiness + append-only evidence
+release_sha=d091daff4047194a52e62561ede3d0e2b153ebb7
+staging_release_tar_sha256=8971b5410d1a2066e29e5668f56eb0f2ac9b502b83912b19f36d2880da953de6
+staged_semantic_artifact_digest=sha256:e947d425c4bba93e203280ab6703b01a3b92f02701507690e636c35034ae61ab
+release_tree_sha256=290b5a4c62da8493cbe5843218f89df1a232767d6faa8fa060b7960b26360853
 ```
 
-Required exit evidence:
+The exact implementation release was first refreshed and re-proven in staging:
 
 ```text
+staging_run=40025339905
+staging_job=120660007003
+MCP_STAGING_DEPLOY=PASS
+STAGING_CANDIDATE_REPROVED=PASS
+```
+
+Then that same release tree was promoted to the isolated production boundary:
+
+```text
+production_run=40025552767
+production_job=120660713791
+staging_release_content_sha256=290b5a4c62da8493cbe5843218f89df1a232767d6faa8fa060b7960b26360853
+production_release_content_sha256=290b5a4c62da8493cbe5843218f89df1a232767d6faa8fa060b7960b26360853
 PRODUCTION_BOUNDARY_SEPARATE=PASS
 PRODUCTION_TLS_HEALTH=PASS
 PRODUCTION_ACTOR_POLICY=PASS
@@ -228,23 +211,55 @@ SAME_ARTIFACT_PROMOTED=PASS
 PRODUCTION_DEPLOYMENT_OPERATION=PASS
 PRODUCTION_EVIDENCE_LINEAGE=PASS
 BREAK_GLASS=DENIED
+PRODUCTION_PUBLIC_HEALTH=PASS
 GATE_10=COMPLETE
 ```
 
-Gate 11 source-of-truth cutover remains deferred until production is proven.
+Production is isolated from staging by service identity, PostgreSQL state, bearer credential and Forgejo credential. The production app binds to loopback port 3188 behind TLS at `mcp-git.criandofacil.com.br`.
+
+Detailed evidence: `devos-forge-control-plane/docs/evidence/GATE-10-PRODUCTION.md`.
+
+## Active Gate 11 — Forgejo source-of-truth cutover
+
+Canonical tracking: `devos-forge-control-plane` Issue **#32**.
+
+Objective:
+
+```text
+final GitHub -> Forgejo parity
+  -> explicit write-authority cutover
+  -> Forgejo authoritative primary
+  -> production MCP primary operational path
+  -> Forgejo-native branch/PR/review/Actions/merge proof
+  -> GitHub bootstrap-primary authority retired
+```
+
+Required exit evidence:
+
+```text
+FORGEJO_SOURCE_OF_TRUTH=PASS
+GITHUB_BOOTSTRAP_PRIMARY=RETIRED
+FORGEJO_NATIVE_LIFECYCLE=PASS
+PRODUCTION_MCP_PRIMARY_PATH=PASS
+CREDENTIAL_CUTOVER=PASS
+ROLLBACK_CUTBACK_PROVEN=PASS
+STAGE_E=COMPLETE
+STAGE_G=COMPLETE
+GATE_11=COMPLETE
+```
+
+Gate 11 must define GitHub's post-cutover secondary role and sync direction explicitly. No dual-primary interval is acceptable.
 
 ## Security / credential lifecycle
 
 - never commit runtime tokens, private keys or generated secrets;
-- GitHub remains the temporary writable bootstrap primary until Gate 11;
-- the private Forgejo pull-mirror credential remains repository-scoped while needed;
-- `FORGEJO_READ_TOKEN` remains a bootstrap/integration read credential;
-- the broad Gate 4 write credential is not a long-lived production credential;
-- staging uses its own Forgejo credential stored only on the host;
-- the staging MCP bearer credential is host-held and absent from Git/evidence;
-- production credentials/services/state remain completely separate from staging;
-- Forgejo Actions remain rootless-Podman/container-only; do not introduce generic host execution or expose the engine socket.
+- GitHub remains the temporary writable bootstrap primary only until Gate 11 cutover;
+- staging and production use separate host-held Forgejo and MCP bearer credentials;
+- production state is in the separate `devos_cp_production` PostgreSQL database;
+- `BREAK_GLASS` remains default-denied;
+- Forgejo Actions remain rootless-Podman/container-only;
+- bootstrap credentials are retired/rotated only after cutback is proven.
 
 ## Immediate next action
 
-Implement Gate 10 production deployment from the proven Gate 9 model. Build/provision the separate production boundary first, then promote the exact staging-proven artifact without rebuilding it. `BREAK_GLASS` remains denied and Gate 11 remains paused until production is proven.
+Execute Gate 11 as a controlled authority migration: freeze final parity, prove cutback, transfer write authority to Forgejo, prove the full Forgejo-native lifecycle through production MCP, then retire GitHub's bootstrap-primary role.
