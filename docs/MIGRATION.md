@@ -81,6 +81,21 @@ Possible uses for GitHub after migration:
 
 GitHub availability must no longer determine whether private development can continue.
 
+## Pilot cutover discipline
+
+For the `devos-forge` pilot, the first copy is created as a Forgejo pull mirror while GitHub remains primary. Exact branch/tag/object parity must be proven before leaving mirror mode.
+
+After converting the validated pull mirror to a regular Forgejo repository, perform one final intentional fast-forward from the still-primary GitHub `main` into Forgejo `main` before creating any Forgejo-native branch. This captures documentation or other commits made on GitHub after the parity snapshot.
+
+After that final catch-up:
+
+- avoid further GitHub writes during the Forgejo-native lifecycle proof;
+- create the pilot branch only on Forgejo;
+- prove Pull Request, Actions, review, and merge on Forgejo;
+- only then establish the GitHub transition mirror in the Forgejo -> GitHub direction.
+
+This prevents accidental dual-primary divergence during the handoff.
+
 ## Repository migration checklist
 
 For each repository:
