@@ -3,13 +3,13 @@
 ## Status
 
 **Phase:** 1 — Pilot migration  
-**Implementation:** Stage A, Stage B, Stage C, and Stage D complete; Stage E pull mirror created and Git parity proven; mirror conversion next  
+**Implementation:** Stage A, Stage B, Stage C, and Stage D complete; Stage E mirror import, parity, and conversion complete; final GitHub -> Forgejo catch-up next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Convert the validated Forgejo pull mirror of `jaasielsantos/devos-forge` into a regular Forgejo repository, then prove SSH write, branch, Pull Request, Actions, review, and merge lifecycle before moving source-of-truth responsibility away from GitHub.
+Perform one final fast-forward from the still-primary GitHub repository into the now-writable Forgejo repository so both `main` branches start the native Forgejo lifecycle test from the exact same commit. Then prove SSH clone/push, branch, Pull Request, Actions, review, and merge on Forgejo before moving source-of-truth responsibility away from GitHub.
 
 ## Locked V1 topology
 
@@ -110,7 +110,7 @@ Read-only preflight validated Forgejo health, GitHub source reachability, source
 https://github.com/jaasielsantos/devos-forge.git
 ```
 
-GitHub remains primary at this gate.
+GitHub remained primary at this gate.
 
 ### E3 — Git parity COMPLETE
 
@@ -122,37 +122,33 @@ forgejo_main=3b883b7cd352886a8e7ab33c462638b726d5599e
 refs_parity=PASS
 ```
 
-Forgejo object integrity also passes:
+Forgejo object integrity also passed `git fsck --full --no-dangling`.
 
-```text
-Checking objects: 100% (273/273), done.
-Verifying commits in commit graph: 100% (73/73), done.
-```
+### E4 — convert mirror to regular repository COMPLETE
 
-Proof:
+The validated pull mirror was converted in Forgejo to a regular writable repository. Git history was preserved and the repository is no longer operating in pull-mirror mode.
 
-- destination bare Git repository exists;
-- GitHub and Forgejo branch/tag ref sets are identical;
-- `main` points to the same commit on both forges;
-- Forgejo `git fsck --full --no-dangling` passes.
+Because project documentation changed on GitHub after the parity snapshot, the next gate is one intentional final fast-forward from GitHub `main` into Forgejo `main` before any Forgejo-native branch is created. After that catch-up, avoid further GitHub writes until the pilot branch/PR lifecycle is established, preventing accidental dual-primary divergence.
 
-### E4 — convert mirror to regular repository NEXT
+### E5 — final catch-up + SSH write NEXT
 
-The next gate is intentionally one-way: convert the validated pull mirror into a regular Forgejo repository so writes/PRs can be tested. This does not delete Git history, but pull-mirror mode cannot simply be restored on the same repository afterward; rollback before source-of-truth cutover remains GitHub as the still-valid primary.
+Required sequence:
 
-After conversion, prove:
-
-1. Forgejo repository is no longer marked as a pull mirror;
-2. `main` still points to the validated commit;
-3. SSH clone works;
-4. SSH push of a new pilot branch works;
-5. no direct change is made to GitHub by that Forgejo-only branch yet.
+1. create an intended temporary SSH credential on the VPS and enroll only its public key in Forgejo;
+2. clone current GitHub `main` to a disposable working directory;
+3. add Forgejo as a second remote;
+4. fast-forward push GitHub `main` to Forgejo `main` with no force;
+5. verify GitHub and Forgejo `main` are identical;
+6. create `stage-e/pilot-lifecycle` from that synchronized head;
+7. make one small Stage E proof commit and push only that branch to Forgejo;
+8. keep GitHub unchanged by the pilot branch.
 
 ### Stage E remaining lifecycle gates
 
 - [x] import `jaasielsantos/devos-forge` to Forgejo with full Git history
 - [x] verify branches/tags/history parity
-- [ ] convert pull mirror to a regular Forgejo repository
+- [x] convert pull mirror to a regular Forgejo repository
+- [ ] final fast-forward catch-up from GitHub primary to Forgejo
 - [ ] verify SSH clone/push on the pilot
 - [ ] create and push a pilot branch
 - [ ] open a Forgejo Pull Request
@@ -191,11 +187,11 @@ Forgejo Actions remain container-only through rootless Podman. Do not configure 
 [x] Stage B  Nginx + DNS + TLS
 [x] Stage C  Git SSH auth + clone/push
 [x] Stage D  Forgejo Runner + rootless Podman + Actions smoke
-[~] Stage E  mirror + parity complete -> convert -> lifecycle proof
+[~] Stage E  mirror + parity + conversion complete -> final catch-up -> lifecycle proof
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
 ```
 
 ## Immediate next action
 
-In Forgejo, open `jaasielsantos/devos-forge -> Settings -> Repository`, locate the mirror conversion control in the repository settings/Danger Zone, convert the validated mirror to a regular repository, and confirm the repository remains at `main=3b883b7cd352886a8e7ab33c462638b726d5599e` before beginning the SSH write test.
+Create a temporary Stage E SSH key on the VPS, enroll only its public key in Forgejo, then use a disposable clone of the current GitHub primary to fast-forward Forgejo `main` once. Verify both `main` refs match before creating the Forgejo-only pilot branch.
