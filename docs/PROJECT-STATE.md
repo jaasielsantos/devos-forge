@@ -5,7 +5,7 @@
 **Phase:** 1 — Forgejo pilot proven through native branch creation; Control Plane implementation active  
 **Infrastructure:** Stages A-D complete  
 **Migration:** Stage E proven through `FORGEJO_NATIVE_BRANCH=PASS`; Forgejo PR/Actions/review/merge proof intentionally paused until Control Plane production cutover  
-**Control Plane:** Gates 0-6 complete; Gate 7 active  
+**Control Plane:** Gates 0-6 complete; Gate 7 software/runtime prepared; public staging blocked on DNS + one-time root bootstrap  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`  
 **Control Plane repository:** `devos-forge-control-plane`
@@ -140,7 +140,7 @@ Locked principles:
 [x] Gate 4  ForgejoProvider write path
 [x] Gate 5  Control Plane core: policy / idempotency / evidence
 [x] Gate 6  MCP adapter
-[~] Gate 7  staging deployment
+[~] Gate 7  staging deployment — software/runtime ready; public deploy pending DNS + root bootstrap
 [ ] Gate 8  MCP -> Forgejo end-to-end proof
 [ ] Gate 9  deployment control semantics
 [ ] Gate 10 production Control Plane
@@ -243,7 +243,58 @@ POSTGRES_OPERATION_LEDGER=PASS
 MCP_ADAPTER=PASS
 ```
 
-The adapter exposes semantic capability-aware tools, validates inputs with Zod, maps a normalized actor/context, and routes material writes through the existing idempotent Control Plane executor. Local validation uses stdio; network transport and staging service deployment belong to Gate 7.
+The adapter exposes semantic capability-aware tools, validates inputs with Zod, maps a normalized actor/context, and routes material writes through the existing idempotent Control Plane executor.
+
+## Gate 7 staging preparation
+
+The Control Plane staging software/runtime/operations package has been merged into `main` through PR #21:
+
+```text
+implementation_pr=21
+implementation_merge=735aa275e326a6dc57eae3000dd397a47cb9972b
+issue_17=OPEN
+self_hosted_runner=devos-cp-vps-01
+host=srv1805473
+validated_branch_ci_run=39936879890
+validated_branch_ci_job=120358481039
+unit_tests=55/55 PASS
+MCP_ADAPTER_SMOKE=PASS
+MCP_HTTP_STAGING_SMOKE=PASS
+FORGEJO_PROVIDER_READ_AUTHENTICATED_SMOKE=PASS
+POSTGRES_OPERATION_LEDGER=PASS
+staging_nginx=PASS
+staging_certbot=PASS
+staging_postgres_tools=PASS
+staging_port_3187=AVAILABLE
+staging_reference_hostname=git.criandofacil.com.br
+staging_reference_ipv4=187.77.39.14
+staging_dns=UNRESOLVED
+staging_sudo_noninteractive=UNAVAILABLE
+STAGING_PRIVILEGED_BOOTSTRAP=REQUIRES_ROOT_SESSION
+MCP_STAGING_DEPLOY=NOT_YET_PROVEN
+```
+
+Prepared staging topology:
+
+```text
+Internet
+  -> Nginx/TLS
+  -> 127.0.0.1:3187
+  -> non-root devos-cp-staging service
+  -> separate devos_cp_staging PostgreSQL database
+  -> staging-scoped Forgejo credential
+```
+
+The release pipeline uses SHA-addressed bundles with a bundled Node 24 runtime, constrained root-owned deploy/rollback helper, health/readiness/authenticated MCP probes, and automatic rollback. The self-hosted runner remains non-root and does not receive generic sudo.
+
+Two external prerequisites remain:
+
+```text
+1. DNS: mcp-git-staging.criandofacil.com.br -> 187.77.39.14
+2. one root session on srv1805473 for scripts/bootstrap-staging-host.sh
+```
+
+Gate 7 deliberately remains open until the public TLS endpoint actually emits `MCP_STAGING_DEPLOY=PASS`.
 
 Canonical Control Plane evidence lives in:
 
@@ -254,6 +305,7 @@ devos-forge-control-plane/docs/evidence/GATE-3-FORGEJO-READ.md
 devos-forge-control-plane/docs/evidence/GATE-4-FORGEJO-WRITE.md
 devos-forge-control-plane/docs/evidence/GATE-5-CONTROL-PLANE-CORE.md
 devos-forge-control-plane/docs/evidence/GATE-6-MCP-ADAPTER.md
+devos-forge-control-plane/docs/evidence/GATE-7-STAGING.md
 ```
 
 ## Active Gate 7
@@ -282,6 +334,8 @@ Required staging properties:
 Next exit evidence:
 
 ```text
+STAGING_HOST_BOOTSTRAP=PASS
+staging_public_tls_health=PASS
 MCP_STAGING_DEPLOY=PASS
 ```
 
@@ -290,9 +344,10 @@ MCP_STAGING_DEPLOY=PASS
 - never commit runtime tokens, private keys or generated secrets;
 - `FORGEJO_READ_TOKEN` remains a bootstrap read credential only;
 - the temporary broad `FORGEJO_WRITE_TOKEN` completed its Gate 4 proof and should be revoked/removed rather than retained long term;
-- staging/production credentials will be environment-scoped and narrower where the Forgejo API permits;
+- staging gets its own host-side Forgejo credential and separate MCP caller credential;
+- staging/production credentials remain environment-scoped and separate;
 - Forgejo Actions remain rootless-Podman/container-only; do not introduce a generic host runner label or expose the engine socket to jobs.
 
 ## Immediate next action
 
-Implement Gate 7 in `jaasielsantos/devos-forge-control-plane`: network MCP transport, staging-only service state/credentials, dedicated systemd unit, Nginx/TLS ingress, health checks and reproducible deployment at `mcp-git-staging.criandofacil.com.br` before beginning the Gate 8 E2E mutation proof.
+Complete the two external Gate 7 prerequisites: create the staging DNS A record for `187.77.39.14`, then run the one-time root bootstrap on `srv1805473`. After that, trigger the constrained `staging-control-plane` deployment workflow and accept Gate 7 only when the public endpoint returns `MCP_STAGING_DEPLOY=PASS`.
