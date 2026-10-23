@@ -3,13 +3,13 @@
 ## Status
 
 **Phase:** 1 — Forgejo Runner validation  
-**Implementation:** Stage A, Stage B, and Stage C complete; Stage D preflight clean; dedicated runner host setup next  
+**Implementation:** Stage A, Stage B, and Stage C complete; Stage D host preparation complete; repository-scoped runner registration next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Install and register a dedicated Forgejo Runner using rootless Podman, keep runner capacity at 1 while the GitHub runner coexists, and prove a minimal Forgejo Actions smoke workflow before migrating the `devos-forge` pilot.
+Register the prepared Forgejo Runner at repository scope for `jaasielsantos/ssh-smoke`, keep capacity at 1 while the GitHub runner coexists, run jobs only in rootless Podman containers, and prove a minimal Forgejo Actions smoke workflow before migrating the `devos-forge` pilot.
 
 ## Locked V1 topology
 
@@ -145,31 +145,49 @@ Validated on `srv1805473`:
 - Podman reports `rootless=true`;
 - Podman uses cgroup v2 with the systemd cgroup manager;
 - user namespaces are enabled;
-- current administrative user has subordinate UID/GID ranges;
 - cgroup v2 exposes CPU, memory, IO and pids controllers;
 - Forgejo Actions is enabled;
 - Forgejo service is active/enabled and public health passes;
 - existing GitHub Actions runner remains active;
 - no conflicting public listeners were introduced.
 
-The first Podman check failed only because the shell's current working directory had been deleted during smoke cleanup. After returning to a valid directory, Podman passed normally.
+### D2 — dedicated runner host setup COMPLETE
 
-### D2 — locked runner setup
+Applied and validated:
 
-- create a dedicated `forgejo-runner` OS account rather than reuse `jaasielpadilha`;
-- ensure that account receives its own subordinate UID/GID mappings;
-- lock password login for the service account;
-- enable linger for persistent user services;
-- run a rootless Podman socket for that account;
-- install and verify Forgejo Runner v13.1.0;
-- generate a version-matched `runner-config.yml`;
-- set runner capacity to 1 while the GitHub runner coexists;
-- use container execution through Podman only; do not introduce a generic `host` runner label;
-- initially register the runner at repository scope for `jaasielsantos/ssh-smoke`;
-- use the Forgejo 15 interactive registration flow (`URL + UUID + token`) rather than the deprecated `.runner` registration flow;
-- run a minimal Actions workflow before widening scope or migrating the pilot repository.
+- Forgejo Runner v13.1.0 installed from the official Forgejo release and its OpenPGP signature verified;
+- dedicated `forgejo-runner` account created as UID/GID 1002;
+- password login for the service account locked;
+- dedicated subordinate mappings created: `forgejo-runner:231072:65536` in both `/etc/subuid` and `/etc/subgid`;
+- linger enabled (`Linger=yes`);
+- rootless Podman socket enabled and listening at `/run/user/1002/podman/podman.sock`;
+- Podman validated as `forgejo-runner` with `rootless=true`, cgroup v2 and systemd cgroup manager;
+- version-matched generated configuration created at `/home/forgejo-runner/runner-config.yml` with mode `0600`;
+- no registration token inserted and no runner daemon/service started during host preparation.
 
-A dedicated host-preparation script is available at `scripts/stage-d-runner-host-setup.sh`. It deliberately stops before inserting registration credentials or starting a runner daemon/service.
+### D3 — repository-scoped runner registration NEXT
+
+Use Forgejo 15 interactive registration at:
+
+```text
+jaasielsantos/ssh-smoke -> Settings -> Actions -> Runners -> Create new runner
+```
+
+The UI supplies a UUID and confidential token. Never paste the token into chat, Git, shell history, or command-line arguments.
+
+`stage-d-runner-register-config.sh` writes the connection locally using hidden token input and locks the V1 policy to:
+
+- `capacity: 1`;
+- container-only `docker` label; no `host` label;
+- rootless Podman as the runner container engine;
+- `container.docker_host: "-"`, while the future systemd service supplies `DOCKER_HOST=unix:///run/user/1002/podman/podman.sock`; this lets the runner create job containers without mounting the Podman socket inside workflows;
+- `privileged: false`;
+- no allowed workflow bind mounts (`valid_volumes: []`);
+- resource envelope of 1 GiB RAM, 0.75 CPU and 256 PIDs per job container;
+- Actions cache disabled for this first Podman 4.9 smoke;
+- IPv6 disabled for the initial rootless Podman smoke.
+
+After registration configuration is written, the next gate is a hardened systemd service and online-runner validation, followed by the minimal Actions smoke workflow.
 
 ## Executable artifacts
 
@@ -181,6 +199,7 @@ A dedicated host-preparation script is available at `scripts/stage-d-runner-host
 - `scripts/stage-c-ssh-preflight.sh`
 - `scripts/stage-d-runner-preflight.sh`
 - `scripts/stage-d-runner-host-setup.sh`
+- `scripts/stage-d-runner-register-config.sh`
 - `docs/HOST-CRIANDOFACIL.md`
 - `docs/DEPLOYMENT.md`
 
@@ -190,7 +209,7 @@ The GitHub repository is public. Never commit runtime passwords, tokens, private
 
 Client SSH access is granted only through explicitly intended public keys stored in Forgejo. Temporary smoke credentials should be removed after their validation purpose is complete.
 
-Forgejo Actions jobs must remain containerized through rootless Podman. Do not configure a `host` label for the V1 runner. Keep the initial runner registration at repository scope to minimize blast radius.
+Forgejo Actions jobs must remain containerized through rootless Podman. Do not configure a `host` label for the V1 runner. Keep the initial runner registration at repository scope to minimize blast radius. Do not expose the Podman socket inside job containers.
 
 ## Phase 1 sequence
 
@@ -198,7 +217,7 @@ Forgejo Actions jobs must remain containerized through rootless Podman. Do not c
 [x] Stage A  local Forgejo bootstrap + health
 [x] Stage B  Nginx + DNS + TLS
 [x] Stage C  Git SSH auth + clone/push proven
-[~] Stage D  preflight complete -> dedicated runner host setup -> repo-scoped registration -> Actions smoke
+[~] Stage D  preflight + host setup complete -> repo registration -> systemd -> Actions smoke
 [ ] Stage E  migrate devos-forge pilot
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
@@ -206,4 +225,4 @@ Forgejo Actions jobs must remain containerized through rootless Podman. Do not c
 
 ## Immediate next action
 
-Run `scripts/stage-d-runner-host-setup.sh` first in dry-run mode and then with `--apply` after reviewing the plan. The script will prepare the dedicated service account, rootless Podman socket, verified Forgejo Runner v13.1.0 binary, and generated configuration file without registering or starting the runner.
+Create a repository-scoped runner in the Forgejo UI for `jaasielsantos/ssh-smoke`, then run `scripts/stage-d-runner-register-config.sh` on the VPS and enter the UUID plus confidential token locally. Do not send the token through chat.
