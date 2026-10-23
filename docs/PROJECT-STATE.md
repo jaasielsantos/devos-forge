@@ -2,14 +2,14 @@
 
 ## Status
 
-**Phase:** 1 — Forgejo Runner validation  
-**Implementation:** Stage A, Stage B, and Stage C complete; Stage D runner registered and service active; Actions smoke next  
+**Phase:** 1 — Pilot migration  
+**Implementation:** Stage A, Stage B, Stage C, and Stage D complete; Stage E migration of `devos-forge` next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Prove a minimal Forgejo Actions workflow end to end on the repository-scoped `ssh-smoke` runner, using rootless Podman containers only. After that, migrate the `devos-forge` pilot.
+Migrate `devos-forge` to Forgejo as the pilot repository while keeping GitHub as a transition mirror. Prove the repository lifecycle on Forgejo before changing the source of truth.
 
 ## Locked V1 topology
 
@@ -30,7 +30,7 @@ native binary + systemd
           |
           v
       Forgejo Runner v13.1.0
-      service: forgejo-runner.service
+      forgejo-runner.service
           |
           v
       rootless Podman
@@ -66,104 +66,78 @@ Git-over-SSH uses the existing system OpenSSH service on port 22 with the dedica
 - smoke commit: `bcbfee5` (`test: validate Forgejo SSH push`).
 - temporary VPS smoke key removed after validation.
 
-## Stage D — Forgejo Runner + rootless Podman ACTIVE
+### Stage D — Forgejo Runner + rootless Podman COMPLETE
 
-### D1 — preflight COMPLETE
+Validated end to end on `srv1805473`:
 
-Validated on `srv1805473`:
-
-- Ubuntu 24.04.4 LTS / kernel 6.8;
-- 1 vCPU;
-- 3.8 GiB RAM, 2 GiB swap;
-- ~32 GiB free disk at capture;
-- Podman 4.9.3 functional rootless;
+- Podman 4.9.3 rootless;
 - cgroup v2 + systemd cgroup manager;
-- unprivileged user namespaces available;
-- Forgejo Actions enabled;
-- existing GitHub Actions runner coexistence confirmed.
-
-Capacity remains locked to `1` while the GitHub runner coexists.
-
-### D2 — dedicated runner host COMPLETE
-
-- Forgejo Runner v13.1.0 installed from official release and OpenPGP signature verified.
-- dedicated `forgejo-runner` account created as UID/GID 1002.
-- password login locked.
-- dedicated subordinate mappings: `231072:65536` for both subuid/subgid.
-- linger enabled.
-- rootless Podman socket active at `/run/user/1002/podman/podman.sock`.
-- runner config stored at `/home/forgejo-runner/runner-config.yml` mode `0600`.
-
-### D3 — repository-scoped registration COMPLETE
-
-The runner was created at repository scope for `jaasielsantos/ssh-smoke` using Forgejo 15 interactive registration and local secret entry.
-
-Locked runner policy:
-
-- `capacity: 1`;
-- only `docker` label;
-- no `host` label;
+- dedicated `forgejo-runner` account UID/GID 1002;
+- dedicated subuid/subgid `231072:65536`;
+- linger enabled;
+- rootless Podman socket active at `/run/user/1002/podman/podman.sock`;
+- Forgejo Runner v13.1.0 installed and OpenPGP signature verified;
+- repository-scoped runner registered for `jaasielsantos/ssh-smoke`;
+- `capacity: 1` while GitHub runner coexists;
+- label `docker` only; no `host` label;
 - `privileged: false`;
 - `valid_volumes: []`;
-- `docker_host: "-"` so the engine socket is not mounted inside workflow containers;
-- runner process receives `DOCKER_HOST=unix:///run/user/1002/podman/podman.sock` only through systemd;
+- engine socket is not exposed inside workflow containers;
 - per-job envelope: 1 GiB RAM, 0.75 CPU, 256 PIDs;
-- cache disabled for the initial Podman 4.9 smoke;
-- IPv6 disabled for the initial smoke.
+- `forgejo-runner.service` enabled and active;
+- runner declared successfully and poller launched.
 
-### D4 — runner service COMPLETE
+First Actions execution exposed two rootless networking issues:
 
-`forgejo-runner.service` is installed, enabled and active.
+1. `slirp4netns` was missing from the host;
+2. after the initial failed network setup, stale rootless netns runtime state remained under `/run/user/1002`.
 
-Validated startup:
+The host was repaired by installing `slirp4netns`, cleaning the stale rootless-netns runtime state for the dedicated runner user, validating a direct rootless Podman container, and re-running the workflow.
 
-```text
-runner: devos-forge-smoke-runner, with version: v13.1.0, with labels: [docker], ephemeral: false, declared successfully
-[poller] launched
-```
+The durable host-setup script now installs/verifies `slirp4netns` and runs a disposable rootless Podman networking smoke before registration.
 
-The daemon runs as `forgejo-runner` with:
+Final Forgejo Actions proof:
 
 ```text
-/usr/local/bin/forgejo-runner daemon -c /home/forgejo-runner/runner-config.yml
+FORGEJO_ACTIONS_SMOKE=PASS
 ```
 
-The service supplies only the runner process with:
+This proves the complete path:
 
 ```text
-DOCKER_HOST=unix:///run/user/1002/podman/podman.sock
+Forgejo repository
+  -> Forgejo Actions
+  -> repository-scoped Forgejo Runner
+  -> rootless Podman
+  -> isolated job container
+  -> successful workflow result
 ```
 
-### D5/D6 — next gate: online validation + Actions smoke
+## Stage E — migrate `devos-forge` pilot NEXT
 
-1. Confirm `devos-forge-smoke-runner` appears Online/Idle under:
+Migration strategy remains incremental:
 
 ```text
-ssh-smoke -> Settings -> Actions -> Runners
+GitHub primary + Forgejo copy
+  -> Forgejo primary + GitHub mirror
+  -> Forgejo primary + GitHub optional
 ```
 
-2. Add `.forgejo/workflows/smoke.yml` to `ssh-smoke` using the reference workflow stored at:
+Before any source-of-truth change, Stage E must prove on `devos-forge`:
 
-```text
-examples/forgejo-actions-smoke.yml
-```
-
-3. Verify a job with `runs-on: docker` executes successfully inside the configured container image.
-
-4. Required smoke assertions:
-
-- Node/runtime executes;
-- job is containerized;
-- `/var/run/docker.sock` is absent;
-- `/run/user/1002/podman/podman.sock` is absent;
-- cgroup memory/CPU/PID limits are visible;
-- final marker `FORGEJO_ACTIONS_SMOKE=PASS` is emitted.
+- repository imported with full Git history;
+- SSH clone/push works;
+- branch workflow works;
+- Forgejo Pull Request workflow works;
+- Forgejo Actions executes on the rootless Podman runner;
+- review/merge path works;
+- GitHub remains available as transition mirror.
 
 ## Security gate
 
 The GitHub repository is public. Never commit runtime passwords, tokens, private keys, database credentials, generated Forgejo secrets, certificate private keys, runner UUID/token values, or private SSH keys.
 
-Forgejo Actions must remain container-only through rootless Podman. Do not configure a V1 `host` runner label and do not expose the Podman socket inside workflow containers.
+Forgejo Actions remain container-only through rootless Podman. Do not configure a V1 `host` runner label and do not expose the Podman socket inside workflow containers.
 
 ## Executable artifacts
 
@@ -187,12 +161,12 @@ Forgejo Actions must remain container-only through rootless Podman. Do not confi
 [x] Stage A  local Forgejo bootstrap + health
 [x] Stage B  Nginx + DNS + TLS
 [x] Stage C  Git SSH auth + clone/push
-[~] Stage D  runner registered + service active -> Actions smoke
-[ ] Stage E  migrate devos-forge pilot
+[x] Stage D  Forgejo Runner + rootless Podman + Actions smoke
+[~] Stage E  migrate devos-forge pilot
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
 ```
 
 ## Immediate next action
 
-Confirm the repository-scoped runner is Online/Idle in the Forgejo UI, create `.forgejo/workflows/smoke.yml` in `jaasielsantos/ssh-smoke` from `examples/forgejo-actions-smoke.yml`, and inspect the first Forgejo Actions run.
+Prepare the Stage E pilot migration plan for `jaasielsantos/devos-forge`, preserving full history and keeping GitHub as the transition mirror until the Forgejo PR/CI/merge path and backup/restore gates are proven.
