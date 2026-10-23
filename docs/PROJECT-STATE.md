@@ -3,13 +3,13 @@
 ## Status
 
 **Phase:** 1 — Pilot migration  
-**Implementation:** Stage A, Stage B, Stage C, and Stage D complete; Stage E preflight complete; Forgejo pull-mirror creation next  
+**Implementation:** Stage A, Stage B, Stage C, and Stage D complete; Stage E pull mirror created and Git parity proven; mirror conversion next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Create `jaasielsantos/devos-forge` in Forgejo as a pull mirror of the current GitHub primary, verify exact Git ref/object parity, then prove the repository lifecycle on Forgejo before changing the source of truth.
+Convert the validated Forgejo pull mirror of `jaasielsantos/devos-forge` into a regular Forgejo repository, then prove SSH write, branch, Pull Request, Actions, review, and merge lifecycle before moving source-of-truth responsibility away from GitHub.
 
 ## Locked V1 topology
 
@@ -39,7 +39,7 @@ native binary + systemd
 
 Git-over-SSH uses the existing system OpenSSH service on port 22 with the dedicated `git` account.
 
-## Completed stages
+## Completed infrastructure stages
 
 ### Stage A — Forgejo bootstrap COMPLETE
 
@@ -63,7 +63,6 @@ Git-over-SSH uses the existing system OpenSSH service on port 22 with the dedica
 - dedicated client key authentication succeeds as `jaasielsantos`.
 - shell access is correctly refused.
 - real SSH clone/commit/push succeeded against `jaasielsantos/ssh-smoke`.
-- smoke commit: `bcbfee5` (`test: validate Forgejo SSH push`).
 - temporary VPS smoke key removed after validation.
 
 ### Stage D — Forgejo Runner + rootless Podman COMPLETE
@@ -72,7 +71,7 @@ Validated end to end on `srv1805473`:
 
 - Podman 4.9.3 rootless;
 - cgroup v2 + systemd cgroup manager;
-- dedicated `forgejo-runner` UID/GID 1002 with dedicated subuid/subgid `231072:65536`;
+- dedicated `forgejo-runner` account UID/GID 1002 with dedicated subuid/subgid `231072:65536`;
 - linger and rootless Podman socket active;
 - Forgejo Runner v13.1.0 installed and signature verified;
 - repository-scoped runner registered for `jaasielsantos/ssh-smoke`;
@@ -101,42 +100,65 @@ GitHub primary + Forgejo copy
 
 ### E1 — migration preflight COMPLETE
 
-Read-only preflight validated:
+Read-only preflight validated Forgejo health, GitHub source reachability, source default branch `main`, source ref inventory, and absence of an existing Forgejo destination.
 
-- Forgejo health = pass;
-- GitHub source reachable at `https://github.com/jaasielsantos/devos-forge.git`;
-- source default branch = `main`;
-- source `main` at preflight commit `1dde1856cbffa9072561c2127393bc33da5dfb9e`;
-- source had one branch (`main`) and no tags at capture;
-- Forgejo destination repository path did not yet exist;
-- no Git clone authentication is required for the public GitHub source.
+### E2 — Forgejo pull mirror COMPLETE
 
-The selected first migration mode is a Forgejo pull mirror while GitHub remains primary. Do not create a normal empty `devos-forge` repository before the migration.
-
-### E2 — create pull mirror NEXT
-
-Use Forgejo UI migration:
+`jaasielsantos/devos-forge` was created in Forgejo as a pull mirror of:
 
 ```text
-New Migration -> Git
-source: https://github.com/jaasielsantos/devos-forge.git
-owner: jaasielsantos
-repository: devos-forge
-This repository will be a mirror: enabled
+https://github.com/jaasielsantos/devos-forge.git
 ```
 
-After creation, run `scripts/stage-e-mirror-parity.sh` with sudo on the VPS. It compares GitHub and Forgejo branch/tag refs, confirms the `main` commit matches, and runs `git fsck --full --no-dangling` against the Forgejo repository.
+GitHub remains primary at this gate.
 
-### Stage E exit criteria
+### E3 — Git parity COMPLETE
 
-- [ ] import `jaasielsantos/devos-forge` to Forgejo with full Git history
-- [ ] verify branches/tags/history parity
-- [ ] verify SSH clone/push on the pilot after leaving pull-mirror mode
+Parity verification completed successfully after mirror creation:
+
+```text
+source_main=3b883b7cd352886a8e7ab33c462638b726d5599e
+forgejo_main=3b883b7cd352886a8e7ab33c462638b726d5599e
+refs_parity=PASS
+```
+
+Forgejo object integrity also passes:
+
+```text
+Checking objects: 100% (273/273), done.
+Verifying commits in commit graph: 100% (73/73), done.
+```
+
+Proof:
+
+- destination bare Git repository exists;
+- GitHub and Forgejo branch/tag ref sets are identical;
+- `main` points to the same commit on both forges;
+- Forgejo `git fsck --full --no-dangling` passes.
+
+### E4 — convert mirror to regular repository NEXT
+
+The next gate is intentionally one-way: convert the validated pull mirror into a regular Forgejo repository so writes/PRs can be tested. This does not delete Git history, but pull-mirror mode cannot simply be restored on the same repository afterward; rollback before source-of-truth cutover remains GitHub as the still-valid primary.
+
+After conversion, prove:
+
+1. Forgejo repository is no longer marked as a pull mirror;
+2. `main` still points to the validated commit;
+3. SSH clone works;
+4. SSH push of a new pilot branch works;
+5. no direct change is made to GitHub by that Forgejo-only branch yet.
+
+### Stage E remaining lifecycle gates
+
+- [x] import `jaasielsantos/devos-forge` to Forgejo with full Git history
+- [x] verify branches/tags/history parity
+- [ ] convert pull mirror to a regular Forgejo repository
+- [ ] verify SSH clone/push on the pilot
 - [ ] create and push a pilot branch
 - [ ] open a Forgejo Pull Request
 - [ ] run Forgejo Actions on the pilot
 - [ ] review and merge in Forgejo
-- [ ] confirm GitHub transition mirror remains current
+- [ ] establish GitHub transition mirror in Forgejo-primary direction
 - [ ] document the migration procedure
 
 ## Security gate
@@ -158,10 +180,9 @@ Forgejo Actions remain container-only through rootless Podman. Do not configure 
 - `scripts/stage-e-migration-preflight.sh`
 - `scripts/stage-e-mirror-parity.sh`
 - `examples/forgejo-actions-smoke.yml`
+- `docs/MIGRATION.md`
 - `docs/RUNBOOK-V1.md`
 - `docs/ADR-001-V1-DEPLOYMENT.md`
-- `docs/HOST-CRIANDOFACIL.md`
-- `docs/DEPLOYMENT.md`
 
 ## Phase 1 sequence
 
@@ -170,11 +191,11 @@ Forgejo Actions remain container-only through rootless Podman. Do not configure 
 [x] Stage B  Nginx + DNS + TLS
 [x] Stage C  Git SSH auth + clone/push
 [x] Stage D  Forgejo Runner + rootless Podman + Actions smoke
-[~] Stage E  preflight complete -> create pull mirror -> parity -> lifecycle proof
+[~] Stage E  mirror + parity complete -> convert -> lifecycle proof
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
 ```
 
 ## Immediate next action
 
-Create `jaasielsantos/devos-forge` through Forgejo `New Migration -> Git` with `This repository will be a mirror` enabled. Then run `sudo bash scripts/stage-e-mirror-parity.sh` (or download the raw script to `/tmp`) and require exact ref/object parity before proceeding.
+In Forgejo, open `jaasielsantos/devos-forge -> Settings -> Repository`, locate the mirror conversion control in the repository settings/Danger Zone, convert the validated mirror to a regular repository, and confirm the repository remains at `main=3b883b7cd352886a8e7ab33c462638b726d5599e` before beginning the SSH write test.
