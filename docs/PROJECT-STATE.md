@@ -3,13 +3,13 @@
 ## Status
 
 **Phase:** 1 — Pilot migration  
-**Implementation:** Stage A, Stage B, Stage C, and Stage D complete; Stage E migration of `devos-forge` next  
+**Implementation:** Stage A, Stage B, Stage C, and Stage D complete; Stage E preflight complete; Forgejo pull-mirror creation next  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`
 
 ## Current objective
 
-Migrate `devos-forge` to Forgejo as the pilot repository while keeping GitHub as a transition mirror. Prove the repository lifecycle on Forgejo before changing the source of truth.
+Create `jaasielsantos/devos-forge` in Forgejo as a pull mirror of the current GitHub primary, verify exact Git ref/object parity, then prove the repository lifecycle on Forgejo before changing the source of truth.
 
 ## Locked V1 topology
 
@@ -72,29 +72,16 @@ Validated end to end on `srv1805473`:
 
 - Podman 4.9.3 rootless;
 - cgroup v2 + systemd cgroup manager;
-- dedicated `forgejo-runner` account UID/GID 1002;
-- dedicated subuid/subgid `231072:65536`;
-- linger enabled;
-- rootless Podman socket active at `/run/user/1002/podman/podman.sock`;
-- Forgejo Runner v13.1.0 installed and OpenPGP signature verified;
+- dedicated `forgejo-runner` UID/GID 1002 with dedicated subuid/subgid `231072:65536`;
+- linger and rootless Podman socket active;
+- Forgejo Runner v13.1.0 installed and signature verified;
 - repository-scoped runner registered for `jaasielsantos/ssh-smoke`;
-- `capacity: 1` while GitHub runner coexists;
-- label `docker` only; no `host` label;
-- `privileged: false`;
-- `valid_volumes: []`;
-- engine socket is not exposed inside workflow containers;
+- capacity `1`, `docker` label only, no `host` label;
+- `privileged: false`, `valid_volumes: []`, engine socket not exposed to workflow containers;
 - per-job envelope: 1 GiB RAM, 0.75 CPU, 256 PIDs;
 - `forgejo-runner.service` enabled and active;
-- runner declared successfully and poller launched.
-
-First Actions execution exposed two rootless networking issues:
-
-1. `slirp4netns` was missing from the host;
-2. after the initial failed network setup, stale rootless netns runtime state remained under `/run/user/1002`.
-
-The host was repaired by installing `slirp4netns`, cleaning the stale rootless-netns runtime state for the dedicated runner user, validating a direct rootless Podman container, and re-running the workflow.
-
-The durable host-setup script now installs/verifies `slirp4netns` and runs a disposable rootless Podman networking smoke before registration.
+- missing `slirp4netns` and stale rootless-netns runtime state discovered and repaired;
+- durable host setup now verifies rootless networking before registration.
 
 Final Forgejo Actions proof:
 
@@ -102,20 +89,9 @@ Final Forgejo Actions proof:
 FORGEJO_ACTIONS_SMOKE=PASS
 ```
 
-This proves the complete path:
+## Stage E — migrate `devos-forge` pilot ACTIVE
 
-```text
-Forgejo repository
-  -> Forgejo Actions
-  -> repository-scoped Forgejo Runner
-  -> rootless Podman
-  -> isolated job container
-  -> successful workflow result
-```
-
-## Stage E — migrate `devos-forge` pilot NEXT
-
-Migration strategy remains incremental:
+Migration progression remains:
 
 ```text
 GitHub primary + Forgejo copy
@@ -123,15 +99,45 @@ GitHub primary + Forgejo copy
   -> Forgejo primary + GitHub optional
 ```
 
-Before any source-of-truth change, Stage E must prove on `devos-forge`:
+### E1 — migration preflight COMPLETE
 
-- repository imported with full Git history;
-- SSH clone/push works;
-- branch workflow works;
-- Forgejo Pull Request workflow works;
-- Forgejo Actions executes on the rootless Podman runner;
-- review/merge path works;
-- GitHub remains available as transition mirror.
+Read-only preflight validated:
+
+- Forgejo health = pass;
+- GitHub source reachable at `https://github.com/jaasielsantos/devos-forge.git`;
+- source default branch = `main`;
+- source `main` at preflight commit `1dde1856cbffa9072561c2127393bc33da5dfb9e`;
+- source had one branch (`main`) and no tags at capture;
+- Forgejo destination repository path did not yet exist;
+- no Git clone authentication is required for the public GitHub source.
+
+The selected first migration mode is a Forgejo pull mirror while GitHub remains primary. Do not create a normal empty `devos-forge` repository before the migration.
+
+### E2 — create pull mirror NEXT
+
+Use Forgejo UI migration:
+
+```text
+New Migration -> Git
+source: https://github.com/jaasielsantos/devos-forge.git
+owner: jaasielsantos
+repository: devos-forge
+This repository will be a mirror: enabled
+```
+
+After creation, run `scripts/stage-e-mirror-parity.sh` with sudo on the VPS. It compares GitHub and Forgejo branch/tag refs, confirms the `main` commit matches, and runs `git fsck --full --no-dangling` against the Forgejo repository.
+
+### Stage E exit criteria
+
+- [ ] import `jaasielsantos/devos-forge` to Forgejo with full Git history
+- [ ] verify branches/tags/history parity
+- [ ] verify SSH clone/push on the pilot after leaving pull-mirror mode
+- [ ] create and push a pilot branch
+- [ ] open a Forgejo Pull Request
+- [ ] run Forgejo Actions on the pilot
+- [ ] review and merge in Forgejo
+- [ ] confirm GitHub transition mirror remains current
+- [ ] document the migration procedure
 
 ## Security gate
 
@@ -149,6 +155,8 @@ Forgejo Actions remain container-only through rootless Podman. Do not configure 
 - `scripts/stage-d-runner-host-setup.sh`
 - `scripts/stage-d-runner-register-config.sh`
 - `scripts/stage-d-runner-service.sh`
+- `scripts/stage-e-migration-preflight.sh`
+- `scripts/stage-e-mirror-parity.sh`
 - `examples/forgejo-actions-smoke.yml`
 - `docs/RUNBOOK-V1.md`
 - `docs/ADR-001-V1-DEPLOYMENT.md`
@@ -162,11 +170,11 @@ Forgejo Actions remain container-only through rootless Podman. Do not configure 
 [x] Stage B  Nginx + DNS + TLS
 [x] Stage C  Git SSH auth + clone/push
 [x] Stage D  Forgejo Runner + rootless Podman + Actions smoke
-[~] Stage E  migrate devos-forge pilot
+[~] Stage E  preflight complete -> create pull mirror -> parity -> lifecycle proof
 [ ] Stage F  backup + restore rehearsal
 [ ] Stage G  Forgejo becomes source of truth
 ```
 
 ## Immediate next action
 
-Prepare the Stage E pilot migration plan for `jaasielsantos/devos-forge`, preserving full history and keeping GitHub as the transition mirror until the Forgejo PR/CI/merge path and backup/restore gates are proven.
+Create `jaasielsantos/devos-forge` through Forgejo `New Migration -> Git` with `This repository will be a mirror` enabled. Then run `sudo bash scripts/stage-e-mirror-parity.sh` (or download the raw script to `/tmp`) and require exact ref/object parity before proceeding.
