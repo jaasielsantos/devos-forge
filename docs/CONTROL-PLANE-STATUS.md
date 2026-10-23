@@ -6,6 +6,7 @@
 CONTROL_PLANE_ARCHITECTURE=ACCEPTED
 CONTROL_PLANE_REPO_BOOTSTRAP=PASS
 FORGE_PROVIDER_CONTRACT=PASS
+FORGEJO_PROVIDER_READ=PASS
 BOOTSTRAP_PRIMARY=GITHUB
 FORGEJO_ROLE=PULL_MIRROR_UNTIL_CUTOVER
 SELF_HOSTED_CI=PASS
@@ -25,8 +26,10 @@ ROOT_MCP_ENDPOINT=mcp.criandofacil.com.br (reserved)
 - Forgejo Git object integrity verified;
 - forge-agnostic `ForgeProvider` contract completed before Forgejo/MCP implementation;
 - normalized pagination, provider errors, typed preconditions, deterministic conflicts and explicit capabilities implemented;
-- provider surface now covers repositories, files, branches, commits, issues, pull requests, workflows/runs, releases and deployments;
-- no MCP-specific types or Forgejo REST/raw response shapes are present in the provider contract.
+- provider surface covers repositories, files, branches, commits, issues, pull requests, workflows/runs, releases and deployments;
+- real `ForgejoProvider` read adapter implemented with Forgejo-specific paths/raw shapes isolated under `src/providers/forgejo/`;
+- authenticated read smoke passed against Forgejo 15.0.10 using the private Control Plane mirror plus the Forgejo-native `devos-forge` repository;
+- no MCP-specific types are present in the provider layer.
 
 ## Gate 1 evidence
 
@@ -62,37 +65,67 @@ FORGE_PROVIDER_CONTRACT=PASS
 
 Canonical evidence: `devos-forge-control-plane/docs/evidence/GATE-2-FORGE-PROVIDER.md`.
 
+## Gate 3 evidence
+
+```text
+implementation_pr=8
+implementation_merge=54d842245e87b436ce7a88f0a5213eed350def9b
+self_hosted_ci_run=39912468413
+self_hosted_ci_job=120278361017
+unit_tests=14/14 PASS
+forgejo_version=15.0.10+gitea-1.22.0
+authentication=PASS
+capability_discovery=PASS
+private_mirror_repository_get=PASS
+file_read=PASS
+branches_read=PASS
+tree_read=PASS
+commits_read=PASS
+native_repository_get=PASS
+issues_read=PASS
+releases_read=PASS
+FORGEJO_PROVIDER_READ_AUTHENTICATED_SMOKE=PASS
+FORGEJO_PROVIDER_READ=PASS
+```
+
+Current repository/instance units returning deterministic `NOT_FOUND` during the smoke are treated as unavailable capabilities:
+
+```text
+pull_requests_read=SKIP_REPOSITORY_OR_INSTANCE_CAPABILITY
+workflows_read=SKIP_REPOSITORY_OR_INSTANCE_CAPABILITY
+runs_read=SKIP_REPOSITORY_OR_INSTANCE_CAPABILITY
+```
+
+Canonical evidence: `devos-forge-control-plane/docs/evidence/GATE-3-FORGEJO-READ.md`.
+
 ## Current gate
 
-**Gate 3 — ForgejoProvider read path**
+**Gate 4 — ForgejoProvider write path**
 
 Required operations:
 
 ```text
-server/version discovery
-current identity/authentication verification
-repository list/get
-file read/tree
-branch list/get
-commit list/get/diff
-issue list/get
-pull request list/get
-workflow/run inspection where supported
-release read where supported
-deployment read where supported
+repository create
+file write/delete
+branch create/delete
+issue create/update/comment
+pull request create/review/merge when the repository unit is available
+workflow dispatch when the repository/instance capability is available
+release create
 ```
 
 Required properties:
 
-- staging-scoped Forgejo credential;
-- actual Forgejo capability discovery;
-- raw Forgejo response types contained inside `src/providers/forgejo/`;
-- deterministic auth/permission/not-found/provider-unavailable errors;
-- mocked unit tests;
-- integration smoke against Forgejo.
+- mutations carry `operationId`;
+- expected SHA/blob preconditions are enforced before conflicting writes;
+- no default force-push path;
+- deterministic `REF_CONFLICT`, `RESOURCE_CONFLICT` and `PRECONDITION_FAILED` behavior;
+- raw Forgejo mutation shapes remain contained inside `src/providers/forgejo/`;
+- writes are exercised first against a dedicated staging/scratch repository;
+- no production repository mutation is part of Gate 4 validation.
 
 ## Next exit evidence
 
 ```text
-FORGEJO_PROVIDER_READ=PASS
+FORGEJO_PROVIDER_WRITE=PASS
 ```
