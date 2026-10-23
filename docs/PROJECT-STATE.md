@@ -5,7 +5,7 @@
 **Phase:** 1 — Forgejo pilot proven through native branch creation; Control Plane implementation active  
 **Infrastructure:** Stages A-D complete  
 **Migration:** Stage E proven through `FORGEJO_NATIVE_BRANCH=PASS`; Forgejo PR/Actions/review/merge proof intentionally paused until Control Plane production cutover  
-**Control Plane:** Gates 0-5 complete; Gate 6 active  
+**Control Plane:** Gates 0-6 complete; Gate 7 active  
 **Selected V1 host:** `criandofacil-vps` (`srv1805473`)  
 **Pilot repository:** `devos-forge`  
 **Control Plane repository:** `devos-forge-control-plane`
@@ -139,8 +139,8 @@ Locked principles:
 [x] Gate 3  ForgejoProvider read path
 [x] Gate 4  ForgejoProvider write path
 [x] Gate 5  Control Plane core: policy / idempotency / evidence
-[~] Gate 6  MCP adapter
-[ ] Gate 7  staging deployment
+[x] Gate 6  MCP adapter
+[~] Gate 7  staging deployment
 [ ] Gate 8  MCP -> Forgejo end-to-end proof
 [ ] Gate 9  deployment control semantics
 [ ] Gate 10 production Control Plane
@@ -208,6 +208,43 @@ CONTROL_PLANE_CORE=PASS
 
 The PostgreSQL durability smoke uses an isolated PostgreSQL 16 cluster owned by the self-hosted runner on a high test port. It does not use or mutate the Forgejo PostgreSQL database on port 5432.
 
+## Gate 6 completion
+
+The semantic MCP adapter is implemented above the Gate 5 core and validated on the dedicated self-hosted runner:
+
+```text
+implementation_pr=15
+implementation_merge=c42cf62ae78054d1aad209ac303c469c561537b2
+mcp_sdk=@modelcontextprotocol/server@2.3.1
+mcp_protocol_revision=2026-07-28
+self_hosted_runner=devos-cp-vps-01
+branch_ci_run=39933190683
+branch_ci_job=120346261112
+main_ci_run=39933415650
+main_ci_job=120347007731
+lint=PASS
+typecheck=PASS
+unit_tests=49/49 PASS
+semantic_tools_declared=30
+capability_aware_exposure=PASS
+actor_mapping=PASS
+read_authorization_before_provider=PASS
+write_executor_routing=PASS
+write_replay_no_duplicate_mutation=PASS
+safe_error_mapping=PASS
+raw_forge_passthrough=ABSENT
+arbitrary_shell=ABSENT
+arbitrary_ssh=ABSENT
+break_glass_tool=ABSENT
+deployment_mutation_tools=DEFERRED_GATE_9
+MCP_ADAPTER_SMOKE=PASS
+FORGEJO_PROVIDER_READ_AUTHENTICATED_SMOKE=PASS
+POSTGRES_OPERATION_LEDGER=PASS
+MCP_ADAPTER=PASS
+```
+
+The adapter exposes semantic capability-aware tools, validates inputs with Zod, maps a normalized actor/context, and routes material writes through the existing idempotent Control Plane executor. Local validation uses stdio; network transport and staging service deployment belong to Gate 7.
+
 Canonical Control Plane evidence lives in:
 
 ```text
@@ -216,37 +253,36 @@ devos-forge-control-plane/docs/evidence/GATE-2-FORGE-PROVIDER.md
 devos-forge-control-plane/docs/evidence/GATE-3-FORGEJO-READ.md
 devos-forge-control-plane/docs/evidence/GATE-4-FORGEJO-WRITE.md
 devos-forge-control-plane/docs/evidence/GATE-5-CONTROL-PLANE-CORE.md
+devos-forge-control-plane/docs/evidence/GATE-6-MCP-ADAPTER.md
 ```
 
-## Active Gate 6
+## Active Gate 7
 
-Gate 6 introduces the MCP adapter above the now-proven Control Plane core.
-
-Required adapter semantics:
+Gate 7 deploys the staging Control Plane at the accepted endpoint:
 
 ```text
-MCP server transport
-semantic MCP tool registry
-schema validation at adapter boundary
-authenticated actor/context mapping
-Control Plane executor invocation
-stable error/result mapping
-capability-aware tool exposure
+https://mcp-git-staging.criandofacil.com.br
+  -> Nginx/TLS
+  -> staging MCP/Control Plane service
+  -> staging PostgreSQL operation ledger
+  -> staging-scoped Forgejo credential/policy
 ```
 
-Boundaries remain locked:
+Required staging properties:
 
-- MCP stays an adapter and does not own policy/idempotency/evidence logic;
-- no raw Forgejo API passthrough;
-- no arbitrary shell/SSH tool;
-- material writes must route through the Gate 5 executor and carry `operation_id`;
-- unavailable capabilities remain deterministic and machine-readable;
-- adapter validation happens locally before staging deployment.
+- staging and production remain separate service/state/credential boundaries;
+- network transport preserves the semantic MCP registry and actor/policy boundaries proven in Gate 6;
+- service runs as a dedicated non-root systemd unit;
+- health/readiness checks are explicit;
+- no arbitrary host shell or SSH surface is introduced;
+- staging credentials are not committed and are not reused as production credentials;
+- deployment is reproducible and rollbackable;
+- Gate 8 mutation proof starts only after staging is healthy.
 
 Next exit evidence:
 
 ```text
-MCP_ADAPTER=PASS
+MCP_STAGING_DEPLOY=PASS
 ```
 
 ## Security / credential lifecycle
@@ -259,4 +295,4 @@ MCP_ADAPTER=PASS
 
 ## Immediate next action
 
-Implement Gate 6 in `jaasielsantos/devos-forge-control-plane`: semantic MCP tools and adapter transport over the proven Gate 5 execution core, before staging deployment work begins.
+Implement Gate 7 in `jaasielsantos/devos-forge-control-plane`: network MCP transport, staging-only service state/credentials, dedicated systemd unit, Nginx/TLS ingress, health checks and reproducible deployment at `mcp-git-staging.criandofacil.com.br` before beginning the Gate 8 E2E mutation proof.
